@@ -1,5 +1,6 @@
-package com.payflow.gateway.domain;
+package com.payflow.gateway.entity;
 
+import com.payflow.gateway.entity.status.PaymentStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

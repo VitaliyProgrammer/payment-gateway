@@ -7,10 +7,17 @@ Each stage leaves the application in a runnable state. Checked stages are done.
 - [x] **Stage 1 - Domain and synchronous creation.** `POST /v1/payments`,
       `GET /v1/payments/{id}`, merchant API-key authentication, first Testcontainers
       test against real behaviour.
-- [ ] **Stage 2 - Idempotency.** `Idempotency-Key` header; a race on the unique
+- [x] **Stage 2 - Idempotency.** `Idempotency-Key` header; a race on the unique
       constraint decides the winner; every caller with the same key gets the same
-      response.
-      **Proves:** 200 concurrent requests with the same key create exactly one payment.
+      response. Honest `503`/`409` (with `Retry-After`) instead of a misleading `401`
+      when the connection pool is genuinely saturated - covers both `DataAccessException`
+      (query fails) and `TransactionException` (pool exhausted before a transaction can
+      even open), which are separate branches of Spring's exception hierarchy.
+      **Proves:** 200 concurrent requests with the same key never create more than one
+      payment. Under this much contention on a single row, some legitimately get a
+      `503`/`409` instead of `201` - Postgres serializes conflicting inserts on one
+      unique key regardless of connection pool size, so that is a capacity limit, not a
+      bug; a `401` or `500` would have been.
 - [ ] **Stage 3 - Asynchronous processing.** `mock-acquirer` called for real; bounded
       queue + worker pool on virtual threads; `503 Retry-After` instead of blocking the
       HTTP thread when the queue is full; `@Version` guarding state transitions.

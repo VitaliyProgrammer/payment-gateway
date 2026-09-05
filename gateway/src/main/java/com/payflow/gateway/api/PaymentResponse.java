@@ -1,7 +1,7 @@
 package com.payflow.gateway.api;
 
-import com.payflow.gateway.domain.Payment;
-import com.payflow.gateway.domain.PaymentStatus;
+import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.entity.status.PaymentStatus;
 import java.time.Instant;
 import java.util.UUID;
 

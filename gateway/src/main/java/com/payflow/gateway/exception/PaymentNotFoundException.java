@@ -1,4 +1,4 @@
-package com.payflow.gateway.api;
+package com.payflow.gateway.exception;
 
 import java.util.UUID;
 

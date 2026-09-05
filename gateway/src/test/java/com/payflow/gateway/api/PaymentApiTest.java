@@ -1,22 +1,20 @@
 package com.payflow.gateway.api;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static com.payflow.gateway.support.TestMerchants.DEMO_API_KEY;
 import static com.payflow.gateway.support.TestMerchants.DEMO_MERCHANT_ID;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import com.payflow.gateway.domain.Payment;
-import com.payflow.gateway.domain.PaymentRepository;
-import com.payflow.gateway.domain.PaymentStatus;
+import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.repository.PaymentRepository;
+import com.payflow.gateway.entity.status.PaymentStatus;
+import com.payflow.gateway.support.PaymentTestClient;
 import com.payflow.gateway.support.PostgresIntegrationTest;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -28,10 +26,17 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    private PaymentTestClient client;
+
+    @BeforeEach
+    void setUp() {
+        client = new PaymentTestClient(restTemplate);
+    }
+
     @Test
     @DisplayName("a valid API key can create a payment and read it back")
     void createsAndReadsBackAPayment() {
-        ResponseEntity<PaymentResponse> createResponse = createPayment(DEMO_API_KEY, 5000, "UAH");
+        ResponseEntity<PaymentResponse> createResponse = client.create(DEMO_API_KEY, newKey(), 5000, "UAH");
 
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         PaymentResponse created = createResponse.getBody();
@@ -40,7 +45,7 @@ class PaymentApiTest extends PostgresIntegrationTest {
         assertThat(created.currency()).isEqualTo("UAH");
         assertThat(created.status()).isEqualTo(PaymentStatus.CREATED);
 
-        ResponseEntity<PaymentResponse> getResponse = getPayment(DEMO_API_KEY, created.id());
+        ResponseEntity<PaymentResponse> getResponse = client.get(DEMO_API_KEY, created.id(), PaymentResponse.class);
 
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResponse.getBody()).isNotNull();
@@ -53,10 +58,7 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("a request with no API key is rejected before it reaches the handler")
     void rejectsRequestsWithoutAnApiKey() {
-        HttpEntity<CreatePaymentRequest> request = new HttpEntity<>(new CreatePaymentRequest(5000L, "UAH"));
-
-        ResponseEntity<String> response =
-                restTemplate.exchange("/v1/payments", HttpMethod.POST, request, String.class);
+        ResponseEntity<String> response = client.create(null, newKey(), 5000, "UAH", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -64,10 +66,7 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("an unrecognized API key is rejected")
     void rejectsAnUnrecognizedApiKey() {
-        ResponseEntity<String> response = restTemplate.exchange(
-                "/v1/payments", HttpMethod.POST,
-                new HttpEntity<>(new CreatePaymentRequest(5000L, "UAH"), authHeader("not-a-real-key")),
-                String.class);
+        ResponseEntity<String> response = client.create("not-a-real-key", newKey(), 5000, "UAH", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -75,10 +74,7 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("a non-positive amount is rejected with 400")
     void rejectsNonPositiveAmount() {
-        ResponseEntity<String> response = restTemplate.exchange(
-                "/v1/payments", HttpMethod.POST,
-                new HttpEntity<>(new CreatePaymentRequest(0L, "UAH"), authHeader(DEMO_API_KEY)),
-                String.class);
+        ResponseEntity<String> response = client.create(DEMO_API_KEY, newKey(), 0, "UAH", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
@@ -86,7 +82,7 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("fetching an unknown payment id returns 404")
     void unknownPaymentIdReturns404() {
-        ResponseEntity<String> response = getPayment(DEMO_API_KEY, UUID.randomUUID(), String.class);
+        ResponseEntity<String> response = client.get(DEMO_API_KEY, UUID.randomUUID(), String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -94,11 +90,11 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Test
     @DisplayName("one merchant cannot fetch another merchant's payment")
     void merchantsCannotReadEachOthersPayments() {
-        PaymentResponse payment = createPayment(DEMO_API_KEY, 1500, "USD").getBody();
+        PaymentResponse payment = client.create(DEMO_API_KEY, newKey(), 1500, "USD").getBody();
         assertThat(payment).isNotNull();
 
         String otherMerchantKey = "some-other-merchants-key";
-        ResponseEntity<String> response = getPayment(otherMerchantKey, payment.id(), String.class);
+        ResponseEntity<String> response = client.get(otherMerchantKey, payment.id(), String.class);
 
         // Такого ключа теж не існує, тож реалістично тут буде 401. Важлива
         // поведінкова гарантія - що PaymentRepository#findByIdAndMerchantId ніколи
@@ -118,24 +114,7 @@ class PaymentApiTest extends PostgresIntegrationTest {
         assertThat(paymentRepository.findByIdAndMerchantId(payment.getId(), DEMO_MERCHANT_ID)).isPresent();
     }
 
-    private ResponseEntity<PaymentResponse> createPayment(String apiKey, long amount, String currency) {
-        HttpEntity<CreatePaymentRequest> request =
-                new HttpEntity<>(new CreatePaymentRequest(amount, currency), authHeader(apiKey));
-        return restTemplate.exchange("/v1/payments", HttpMethod.POST, request, PaymentResponse.class);
-    }
-
-    private ResponseEntity<PaymentResponse> getPayment(String apiKey, UUID id) {
-        return getPayment(apiKey, id, PaymentResponse.class);
-    }
-
-    private <T> ResponseEntity<T> getPayment(String apiKey, UUID id, Class<T> responseType) {
-        return restTemplate.exchange(
-                "/v1/payments/" + id, HttpMethod.GET, new HttpEntity<>(authHeader(apiKey)), responseType);
-    }
-
-    private HttpHeaders authHeader(String apiKey) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(apiKey);
-        return headers;
+    private String newKey() {
+        return UUID.randomUUID().toString();
     }
 }

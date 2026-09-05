@@ -1,6 +1,6 @@
 package com.payflow.gateway.security;
 
-import com.payflow.gateway.domain.MerchantRepository;
+import com.payflow.gateway.repository.MerchantRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -12,7 +12,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.http.HttpStatus;
 
 @Configuration
-public class SecurityConfig {
+public class SecurityConfiguration {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, MerchantRepository merchantRepository,

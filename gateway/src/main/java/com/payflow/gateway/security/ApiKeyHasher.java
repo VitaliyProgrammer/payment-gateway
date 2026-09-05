@@ -1,9 +1,6 @@
 package com.payflow.gateway.security;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import com.payflow.gateway.util.Sha256;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,12 +14,6 @@ import org.springframework.stereotype.Component;
 public class ApiKeyHasher {
 
     public String hash(String rawApiKey) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashed = digest.digest(rawApiKey.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashed);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is not available", exception);
-        }
+        return Sha256.hex(rawApiKey);
     }
 }

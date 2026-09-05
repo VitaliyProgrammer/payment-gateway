@@ -1,4 +1,4 @@
-package com.payflow.gateway.domain;
+package com.payflow.gateway.entity.status;
 
 /**
  * {@code AUTHORIZED} і {@code CAPTURED} навмисно залишені окремими станами, а не

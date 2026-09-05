@@ -1,7 +1,9 @@
-package com.payflow.gateway.api;
+package com.payflow.gateway.service;
 
-import com.payflow.gateway.domain.Payment;
-import com.payflow.gateway.domain.PaymentRepository;
+import com.payflow.gateway.api.CreatePaymentRequest;
+import com.payflow.gateway.exception.PaymentNotFoundException;
+import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.repository.PaymentRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
