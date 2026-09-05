@@ -14,10 +14,10 @@
     <artifactId>mock-acquirer</artifactId>
     <name>mock-acquirer</name>
     <description>
-        Stand-in for a real acquiring bank. Deliberately a separate deployable service
-        rather than an in-process stub: the gateway must make a real network call that
-        really blocks, because that blocking call is what the concurrency design is
-        built around. An in-process stub would return instantly and hide the problem.
+        Заглушка замість справжнього банку-еквайра. Свідомо окремий сервіс, а не
+        заглушка в тому ж процесі: шлюз має робити справжній мережевий виклик, що
+        реально блокується, бо саме на такому блокуванні побудований весь дизайн
+        конкурентності. Заглушка в процесі відповідала б миттєво й ховала б проблему.
     </description>
 
     <dependencies>

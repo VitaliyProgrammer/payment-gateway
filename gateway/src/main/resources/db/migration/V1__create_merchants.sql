@@ -1,16 +1,16 @@
--- A merchant is an API client of the gateway: an online shop that submits payments
--- with an API key and receives webhooks about their outcome. Everything else in the
--- schema will hang off this table, so it goes first.
+-- Мерчант - це клієнт API шлюзу: інтернет-магазин, який надсилає платежі за
+-- допомогою API-ключа й отримує вебхуки про їх результат. Усе інше в схемі буде
+-- посилатись на цю таблицю, тож вона йде першою.
 
 create table merchants (
     id           uuid         primary key,
     name         text         not null,
-    -- Only the hash is stored. The key itself is shown to the merchant once, at
-    -- creation, and is not recoverable afterwards - the same reason passwords are
-    -- never stored in plain text.
+    -- Зберігається лише хеш. Сам ключ показується мерчанту один раз, при
+    -- створенні, і відновити його потім неможливо - з тієї ж причини, з якої
+    -- паролі ніколи не зберігають у відкритому вигляді.
     api_key_hash text         not null,
-    -- Where payment webhooks are delivered. Nullable: a merchant may integrate by
-    -- polling GET /v1/payments/{id} instead of receiving callbacks.
+    -- Куди доставляти вебхуки про платежі. Nullable: мерчант може інтегруватись
+    -- через опитування GET /v1/payments/{id} замість отримання колбеків.
     webhook_url  text,
     active       boolean      not null default true,
     created_at   timestamptz  not null default now(),
@@ -18,6 +18,7 @@ create table merchants (
     constraint merchants_name_not_blank check (length(btrim(name)) > 0)
 );
 
--- Every authenticated request looks a merchant up by this hash, so it is indexed.
--- Unique because two merchants sharing an API key would make requests ambiguous.
+-- Кожен автентифікований запит шукає мерчанта саме за цим хешем, тому він
+-- індексований. Унікальний, бо два мерчанти з однаковим ключем зробили б запити
+-- неоднозначними.
 create unique index merchants_api_key_hash_key on merchants (api_key_hash);

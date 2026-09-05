@@ -30,15 +30,19 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Flyway owns the schema; Hibernate only validates it against the entities. -->
+        <!-- Схемою бази володіє Flyway; Hibernate лише звіряє її з сутностями. -->
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
         </dependency>
-        <!-- Since Flyway 10 each database lives in its own module. -->
+        <!-- Починаючи з Flyway 10, підтримка кожної БД винесена в окремий модуль. -->
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
@@ -50,7 +54,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Exposes /actuator/prometheus for the Grafana dashboard added in stage 7. -->
+        <!-- Додає /actuator/prometheus для Grafana-дашборду, який з'явиться на стадії 7. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
@@ -60,6 +64,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -78,9 +87,9 @@
             <scope>test</scope>
         </dependency>
         <!--
-            Concurrency tests assert on state that becomes true a little later, on
-            another thread. Awaitility replaces hand-rolled sleep/poll loops, so the
-            tests do not depend on how fast the machine running them is.
+            Тести на конкурентність перевіряють стан, який стає істинним трохи пізніше,
+            в іншому потоці. Awaitility замінює власноруч написані цикли sleep/poll,
+            тож тести не залежать від того, наскільки швидка машина, на якій вони йдуть.
         -->
         <dependency>
             <groupId>org.awaitility</groupId>

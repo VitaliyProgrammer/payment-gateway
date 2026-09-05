@@ -30,14 +30,16 @@
 
     <properties>
         <!--
-            Java 21 rather than the newest release: it is the LTS that Spring Boot 3.5
-            officially supports and the one most employers actually run in production.
-            Virtual threads are final here, so nothing in this project needs preview flags.
+            Java 21, а не найновіша версія: це LTS-реліз, який офіційно підтримує
+            Spring Boot 3.5, і саме та версія, яку реально використовує більшість
+            роботодавців у продакшені. Віртуальні потоки тут фінальні (не preview),
+            тож жодні прапорці для preview-фіч не потрібні.
 
-            One consequence is deliberate: on 21 a virtual thread blocking inside a
-            `synchronized` block pins its carrier thread (fixed only in JDK 24 by JEP 491).
-            This project therefore uses ReentrantLock instead of synchronized wherever a
-            virtual thread can block. See README, section "Concurrency notes".
+            Один наслідок цього вибору свідомий: на Java 21 віртуальний потік, що
+            блокується всередині блоку `synchronized`, "прибивається" до свого
+            носійного потоку (виправлено лише в JDK 24, JEP 491). Тому в проєкті
+            всюди, де віртуальний потік може заблокуватись, використовується
+            ReentrantLock замість synchronized. Див. README, розділ "Concurrency notes".
         -->
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

@@ -4,13 +4,14 @@ spring:
 
   threads:
     virtual:
-      # One virtual thread per request. Requests here spend almost all of their time
-      # blocked - on Postgres, and later on the acquirer - so a bounded platform-thread
-      # pool would just be an arbitrary ceiling that has to be guessed and tuned.
+      # Один віртуальний потік на кожен запит. Тут запити майже весь час просто
+      # чекають - на Postgres, а пізніше і на еквайра - тож обмежений пул
+      # платформних потоків був би довільною стелею, яку довелось би підбирати й
+      # підкручувати навмання.
       #
-      # Note what this does NOT remove: the connection pool below is still bounded, so
-      # under load the queue simply moves from Tomcat into Hikari. That is intentional -
-      # the database is the scarce resource, and it should be the thing that pushes back.
+      # Важливо, чого це НЕ прибирає: пул з'єднань нижче все одно обмежений, тож
+      # під навантаженням черга просто переміщується з Tomcat у Hikari. Це свідомо -
+      # саме база даних має бути дефіцитним ресурсом, який чинить опір першим.
       enabled: true
 
   datasource:
@@ -21,19 +22,19 @@ spring:
       maximum-pool-size: ${DB_POOL_SIZE:20}
       minimum-idle: 5
       connection-timeout: 3000
-      # Fail fast on a request rather than let it hang waiting for a connection:
-      # a payment API that answers "try again" beats one that never answers.
+      # Краще швидко провалити запит, ніж дати йому зависнути в очікуванні з'єднання:
+      # платіжний API, що відповідає "спробуй ще раз", кращий за той, що не відповідає взагалі.
       validation-timeout: 2000
       pool-name: gateway-pool
 
   jpa:
-    # Flyway owns the schema. Hibernate is only allowed to check that the entities
-    # still match it, never to change it - so a mapping mistake fails on startup
-    # instead of silently altering a table that holds money.
+    # Схемою володіє Flyway. Hibernate дозволено лише перевіряти, що сутності досі
+    # їй відповідають, і ніколи не змінювати її - тож помилка в мапінгу провалить
+    # старт застосунку, а не мовчки змінить таблицю, в якій зберігаються гроші.
     hibernate:
       ddl-auto: validate
-    # Lazy loading outside a transaction is a source of accidental N+1 queries and
-    # of queries running while the HTTP response is already being written.
+    # Ліниве завантаження поза межами транзакції - джерело випадкових N+1 запитів,
+    # а також запитів, що виконуються вже під час запису HTTP-відповіді.
     open-in-view: false
     properties:
       hibernate:
@@ -49,7 +50,7 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
-  # In-flight payments must be allowed to finish before the JVM exits.
+  # Платежам, що вже в обробці, потрібно дати завершитись до завершення роботи JVM.
   shutdown: graceful
 
 management:

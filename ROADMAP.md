@@ -4,7 +4,7 @@ Each stage leaves the application in a runnable state. Checked stages are done.
 
 - [x] **Stage 0 - Skeleton.** Multi-module Maven build, Spring Boot + Postgres + Flyway
       wired together, Testcontainers-backed smoke test, CI green.
-- [ ] **Stage 1 - Domain and synchronous creation.** `POST /v1/payments`,
+- [x] **Stage 1 - Domain and synchronous creation.** `POST /v1/payments`,
       `GET /v1/payments/{id}`, merchant API-key authentication, first Testcontainers
       test against real behaviour.
 - [ ] **Stage 2 - Idempotency.** `Idempotency-Key` header; a race on the unique

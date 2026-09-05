@@ -12,12 +12,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Stage 0 smoke test: the application boots against a real Postgres, Flyway applies
- * the schema, Hibernate accepts it, and the service reports itself healthy.
+ * Смок-тест стадії 0: застосунок піднімається на справжньому Postgres, Flyway
+ * накатує схему, Hibernate її приймає, а сервіс сам звітує, що він здоровий.
  *
- * <p>Thin by design - there is no behaviour yet. Its job is to make the build fail
- * loudly the moment wiring, migrations or configuration break, which is exactly what
- * every later stage will lean on.
+ * <p>Навмисно тонкий - жодної бізнес-поведінки тут ще немає. Його завдання -
+ * гучно провалити збірку в ту ж мить, коли ламається конфігурація, зв'язування
+ * компонентів чи міграції, і саме на це спиратимуться всі наступні стадії.
  */
 class SchemaAndHealthTest extends PostgresIntegrationTest {
 

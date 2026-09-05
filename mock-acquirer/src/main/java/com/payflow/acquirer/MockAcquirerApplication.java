@@ -4,9 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Stands in for a real acquiring bank. Deployed as its own service (see the module's
- * pom.xml for why) so that a call from the gateway is a real network hop that really
- * blocks - the behaviour the whole concurrency design in the gateway is built around.
+ * Заглушка замість справжнього банку-еквайра. Розгортається як окремий сервіс
+ * (чому саме так - див. pom.xml цього модуля), тож виклик зі шлюзу є справжнім
+ * мережевим стрибком, який реально блокується - саме на цій поведінці й
+ * побудований весь дизайн конкурентності в шлюзі.
  */
 @SpringBootApplication
 public class MockAcquirerApplication {
