@@ -6,10 +6,13 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import com.payflow.gateway.exception.InvalidPaymentStateException;
 import com.payflow.gateway.exception.PaymentNotFoundException;
 import com.payflow.gateway.exception.ProcessingQueueFullException;
+import com.payflow.gateway.exception.RefundExceedsCapturedAmountException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.TransactionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +57,32 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .header(HttpHeaders.RETRY_AFTER, "1")
                 .body(errorBody(exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidPaymentStateException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidState(InvalidPaymentStateException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorBody(exception.getMessage()));
+    }
+
+    @ExceptionHandler(RefundExceedsCapturedAmountException.class)
+    public ResponseEntity<Map<String, Object>> handleRefundExceeds(RefundExceedsCapturedAmountException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(exception.getMessage()));
+    }
+
+    /**
+     * Найспецифічніший обробник виграє в Spring, тож ця гілка перехоплює
+     * програш оптимістичного блокування ДО того, як він потрапив би у
+     * загальніший handleDataAccessFailure нижче (ObjectOptimisticLockingFailureException
+     * теж технічно DataAccessException) - "хтось інший щойно змінив цей
+     * платіж" це 409, а не "тимчасові проблеми з базою" (503). Для capture й
+     * cancel сюди потрапляє програвший гонку; для refund сюди в принципі не
+     * повинно доходити - PaymentLifecycleService ретраїть це самостійно.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> handleOptimisticLockConflict(
+            ObjectOptimisticLockingFailureException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(errorBody("Платіж було змінено паралельним запитом, перевірте поточний стан і спробуйте ще раз"));
     }
 
     @ExceptionHandler(ProcessingQueueFullException.class)

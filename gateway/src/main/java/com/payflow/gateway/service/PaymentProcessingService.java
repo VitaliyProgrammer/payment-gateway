@@ -2,6 +2,7 @@ package com.payflow.gateway.service;
 
 import com.payflow.gateway.entity.Payment;
 import com.payflow.gateway.entity.status.PaymentStatus;
+import com.payflow.gateway.exception.InvalidPaymentStateException;
 import com.payflow.gateway.repository.PaymentRepository;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,7 +64,7 @@ public class PaymentProcessingService {
         try {
             transition.accept(maybePayment.get());
             return true;
-        } catch (IllegalStateException | ObjectOptimisticLockingFailureException exception) {
+        } catch (InvalidPaymentStateException | ObjectOptimisticLockingFailureException exception) {
             return false;
         }
     }

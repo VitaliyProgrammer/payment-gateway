@@ -1,10 +1,12 @@
 package com.payflow.gateway.conroller;
 
 import com.payflow.gateway.api.CreatePaymentRequest;
+import com.payflow.gateway.api.CreateRefundRequest;
 import com.payflow.gateway.api.PaymentResponse;
 import com.payflow.gateway.entity.Payment;
 import com.payflow.gateway.service.PaymentIdempotencyService;
 import com.payflow.gateway.security.MerchantPrincipal;
+import com.payflow.gateway.service.PaymentLifecycleService;
 import com.payflow.gateway.service.PaymentService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -25,10 +27,13 @@ public class PaymentController {
 
     private final PaymentService paymentService;
     private final PaymentIdempotencyService idempotencyService;
+    private final PaymentLifecycleService lifecycleService;
 
-    public PaymentController(PaymentService paymentService, PaymentIdempotencyService idempotencyService) {
+    public PaymentController(PaymentService paymentService, PaymentIdempotencyService idempotencyService,
+            PaymentLifecycleService lifecycleService) {
         this.paymentService = paymentService;
         this.idempotencyService = idempotencyService;
+        this.lifecycleService = lifecycleService;
     }
 
     @PostMapping
@@ -46,5 +51,21 @@ public class PaymentController {
     public PaymentResponse get(@AuthenticationPrincipal MerchantPrincipal merchant, @PathVariable UUID id) {
         Payment payment = paymentService.getForMerchant(id, merchant.merchantId());
         return PaymentResponse.from(payment);
+    }
+
+    @PostMapping("/{id}/capture")
+    public PaymentResponse capture(@AuthenticationPrincipal MerchantPrincipal merchant, @PathVariable UUID id) {
+        return PaymentResponse.from(lifecycleService.capture(id, merchant.merchantId()));
+    }
+
+    @PostMapping("/{id}/cancel")
+    public PaymentResponse cancel(@AuthenticationPrincipal MerchantPrincipal merchant, @PathVariable UUID id) {
+        return PaymentResponse.from(lifecycleService.cancel(id, merchant.merchantId()));
+    }
+
+    @PostMapping("/{id}/refunds")
+    public PaymentResponse refund(@AuthenticationPrincipal MerchantPrincipal merchant, @PathVariable UUID id,
+            @Valid @RequestBody CreateRefundRequest request) {
+        return PaymentResponse.from(lifecycleService.refund(id, merchant.merchantId(), request.amount()));
     }
 }

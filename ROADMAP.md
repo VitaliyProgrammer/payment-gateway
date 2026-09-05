@@ -32,10 +32,21 @@ Each stage leaves the application in a runnable state. Checked stages are done.
       transaction committed let a worker (fast enough on a virtual thread) query the row
       before it existed - fixed by committing first, enqueueing second, and marking the
       payment `FAILED` as a compensating step if the queue turns out to be full.
-- [ ] **Stage 4 - Capture / cancel / refund.** Sum invariants held under concurrency.
+- [x] **Stage 4 - Capture / cancel / refund.** Sum invariants held under concurrency.
+      Capture and cancel are mutually-exclusive one-shot actions - the loser of a
+      `@Version` race gets an honest `409 Conflict`, not a silent retry that would
+      decide the outcome for them. Refund is additive ("as many partial refunds as fit
+      under the cap"), so it retries on a lost optimistic-lock race with a fresh re-read
+      each attempt, up to a bounded number of attempts - both behaviours reuse the same
+      guard/orchestrator split as `IdempotencyGuard` (stage 2), for the same
+      self-invocation reason.
       **Proves:** 10 concurrent partial refunds of 20 against a 100 capture succeed
-      exactly 5 times and never exceed the captured amount; concurrent capture and
-      cancel on the same payment - exactly one wins, no invalid state.
+      exactly 5 times and never exceed the captured amount - the other 5 are correctly
+      rejected, though as either `400` (some room was left, just not enough) or `409`
+      (by the time of its retry the payment had already reached `REFUNDED`, so the
+      status check fails before the amount check even runs) depending on exact timing;
+      concurrent capture and cancel on the same payment - exactly one wins (`200`), the
+      other gets `409`, final status is always one of the two, never anything else.
 - [ ] **Stage 5 - Outbox and webhooks.** Transactional outbox, `FOR UPDATE SKIP LOCKED`
       poller (safe with multiple instances), signed webhooks, exponential backoff,
       dead-letter, in-order delivery per payment.

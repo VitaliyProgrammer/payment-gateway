@@ -1,6 +1,8 @@
 package com.payflow.gateway.entity;
 
 import com.payflow.gateway.entity.status.PaymentStatus;
+import com.payflow.gateway.exception.InvalidPaymentStateException;
+import com.payflow.gateway.exception.RefundExceedsCapturedAmountException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -114,13 +116,55 @@ public class Payment {
         touch();
     }
 
+    /**
+     * Повне захоплення раніше заблокованих коштів. Часткове захоплення (взяти
+     * менше, ніж було авторизовано) - реальна фіча платіжних систем, але для
+     * цілей цього проєкту вона нічого не додає до історії про конкурентність,
+     * тож свідомо не реалізована.
+     */
+    public void capture() {
+        requireStatus(PaymentStatus.AUTHORIZED);
+        this.capturedAmount = this.amount;
+        this.status = PaymentStatus.CAPTURED;
+        touch();
+    }
+
+    public void cancel() {
+        requireStatus(PaymentStatus.AUTHORIZED);
+        this.status = PaymentStatus.CANCELED;
+        touch();
+    }
+
+    /**
+     * На відміну від capture/cancel (взаємовиключні одноразові дії, де програш
+     * гонки за версію - це чесна відмова), повернення - адитивна операція:
+     * кілька часткових повернень можуть послідовно успішно відбутись, поки їх
+     * сума не вичерпає captured_amount. Тому виклик цього методу (через
+     * PaymentTransitionGuard) очікує на РЕТРАЙ при програші оптимістичного
+     * блокування, а не на одноразову відмову - див. PaymentLifecycleService.
+     */
+    public void refund(long refundAmount) {
+        requireStatus(PaymentStatus.CAPTURED, PaymentStatus.PARTIALLY_REFUNDED);
+
+        long remaining = this.capturedAmount - this.refundedAmount;
+        if (refundAmount > remaining) {
+            throw new RefundExceedsCapturedAmountException(this.id, refundAmount, remaining);
+        }
+
+        this.refundedAmount += refundAmount;
+        this.status = (this.refundedAmount == this.capturedAmount)
+                ? PaymentStatus.REFUNDED
+                : PaymentStatus.PARTIALLY_REFUNDED;
+        touch();
+    }
+
     private void requireStatus(PaymentStatus... allowed) {
         for (PaymentStatus candidate : allowed) {
             if (this.status == candidate) {
                 return;
             }
         }
-        throw new IllegalStateException(
+        throw new InvalidPaymentStateException(
                 "Payment " + id + " is in status " + status + ", expected one of " + java.util.Arrays.toString(allowed));
     }
 
