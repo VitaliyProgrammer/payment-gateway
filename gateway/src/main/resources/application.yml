@@ -70,6 +70,18 @@ payflow:
     # платформному пулі, тож це число обирається під бажану паралельність
     # звернень до еквайра, а не під кількість ядер CPU.
     worker-count: ${PROCESSING_WORKER_COUNT:8}
+  webhooks:
+    max-attempts: ${WEBHOOK_MAX_ATTEMPTS:5}
+    base-backoff-ms: ${WEBHOOK_BASE_BACKOFF_MS:200}
+    max-backoff-ms: ${WEBHOOK_MAX_BACKOFF_MS:5000}
+    # "Оренда" на час активної доставки - див. коментар у міграції V6. Значно
+    # більша за будь-який реалістичний час HTTP-виклику (тайм-аути клієнта
+    # нижче - 2с/5с), щоб оренда ніколи не спливала передчасно під час
+    # нормальної, просто повільної доставки.
+    claim-lease-ms: ${WEBHOOK_CLAIM_LEASE_MS:30000}
+    batch-size: ${WEBHOOK_BATCH_SIZE:20}
+    poller-count: ${WEBHOOK_POLLER_COUNT:2}
+    poll-interval-ms: ${WEBHOOK_POLL_INTERVAL_MS:200}
 
 server:
   port: ${SERVER_PORT:8080}

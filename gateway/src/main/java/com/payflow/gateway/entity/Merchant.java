@@ -23,6 +23,14 @@ public class Merchant {
     @Column(name = "webhook_url")
     private String webhookUrl;
 
+    /**
+     * На відміну від api_key_hash (нам досить звірити хеш), цей секрет
+     * застосунок мусить уміти прочитати - саме ним ми самі підписуємо кожне
+     * вихідне повідомлення вебхука. Тому явний текст, а не хеш.
+     */
+    @Column(name = "webhook_secret", nullable = false)
+    private String webhookSecret;
+
     @Column(nullable = false)
     private boolean active;
 
@@ -31,6 +39,17 @@ public class Merchant {
 
     protected Merchant() {
         // JPA
+    }
+
+    /**
+     * Наразі викликається лише з тестів: демо-мерчант із міграції отримує URL
+     * вебхука вже в тестовому середовищі, бо він залежить від порту тестового
+     * HTTP-сервера, який заздалегідь у міграції не пропишеш. Повноцінний API
+     * для налаштувань мерчанта (заміна URL з дашборду) - за межами цього
+     * проєкту.
+     */
+    public void updateWebhookUrl(String webhookUrl) {
+        this.webhookUrl = webhookUrl;
     }
 
     public UUID getId() {
@@ -47,6 +66,10 @@ public class Merchant {
 
     public String getWebhookUrl() {
         return webhookUrl;
+    }
+
+    public String getWebhookSecret() {
+        return webhookSecret;
     }
 
     public boolean isActive() {

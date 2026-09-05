@@ -47,9 +47,30 @@ Each stage leaves the application in a runnable state. Checked stages are done.
       status check fails before the amount check even runs) depending on exact timing;
       concurrent capture and cancel on the same payment - exactly one wins (`200`), the
       other gets `409`, final status is always one of the two, never anything else.
-- [ ] **Stage 5 - Outbox and webhooks.** Transactional outbox, `FOR UPDATE SKIP LOCKED`
-      poller (safe with multiple instances), signed webhooks, exponential backoff,
-      dead-letter, in-order delivery per payment.
+- [x] **Stage 5 - Outbox and webhooks.** Every merchant-relevant state transition writes
+      an `outbox_events` row in the SAME transaction as the transition itself (reusing
+      `PaymentProcessingService`/`PaymentTransitionGuard` from stages 3-4). A pool of
+      virtual-thread pollers claims work via `FOR UPDATE SKIP LOCKED` with `DISTINCT ON
+      (payment_id)` in the subquery - the same query shape both resolves multi-poller/
+      multi-instance contention AND guarantees per-payment ordering for free (only the
+      oldest pending event per payment is ever eligible). The claim step is a short,
+      separate transaction from the actual HTTP delivery - never hold a DB transaction
+      open across a slow network call, the same principle as `IdempotencyGuard`. Webhooks
+      are HMAC-signed (`X-Payflow-Signature`); failed deliveries get exponential backoff
+      and move to `DEAD_LETTER` after a bounded number of attempts instead of retrying
+      forever.
+      **Proves:** a signed webhook is delivered for each transition; events for the same
+      payment are delivered in order even when an earlier one needs a retry (verified by
+      forcing the first delivery to fail and confirming later events wait for it);
+      exhausted retries land in `DEAD_LETTER`, not stuck `PENDING` forever. Found and
+      fixed during this stage: `PaymentWorkerPool`/`OutboxPollerPool` are
+      `SmartLifecycle` beans that Spring does not stop between test classes sharing a
+      cached context - a lingering pool from an earlier test (different config, e.g.
+      default `max-attempts`) could claim a row created by a later test and record an
+      extra attempt against a threshold the later test never configured, an
+      intermittent, hard-to-reproduce failure. Fixed with `@DirtiesContext` on the shared
+      test base class, so every test class's background workers are guaranteed stopped
+      before the next class starts - slower suite, but no cross-test interference.
 - [ ] **Stage 6 - Reconciliation and resilience.** Sweeper for payments stuck in
       `PROCESSING`; circuit breaker on the acquirer.
       **Proves:** a request that times out against the acquirer is never charged twice

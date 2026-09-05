@@ -7,7 +7,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-public class AcquirerClientConfig {
+public class AcquirerClientConfiguration {
 
     @Bean
     public RestClient acquirerRestClient(@Value("${payflow.acquirer.base-url}") String baseUrl) {

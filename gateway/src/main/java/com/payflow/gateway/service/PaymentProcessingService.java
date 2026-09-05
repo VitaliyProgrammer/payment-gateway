@@ -1,10 +1,12 @@
 package com.payflow.gateway.service;
 
 import com.payflow.gateway.entity.Payment;
-import com.payflow.gateway.entity.status.PaymentStatus;
+import com.payflow.gateway.entity.status.PaymentEventType;
 import com.payflow.gateway.exception.InvalidPaymentStateException;
+import com.payflow.gateway.outbox.OutboxEventRecorder;
 import com.payflow.gateway.repository.PaymentRepository;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.UUID;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -23,29 +25,37 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentProcessingService {
 
     private final PaymentRepository paymentRepository;
+    private final OutboxEventRecorder outboxEventRecorder;
 
-    public PaymentProcessingService(PaymentRepository paymentRepository) {
+    public PaymentProcessingService(PaymentRepository paymentRepository, OutboxEventRecorder outboxEventRecorder) {
         this.paymentRepository = paymentRepository;
+        this.outboxEventRecorder = outboxEventRecorder;
     }
 
+    /**
+     * markProcessing навмисно не передає тип події - PROCESSING суто
+     * внутрішній, транзитний стан, про який мерчанту сповіщати нічого:
+     * платіж або підтвердиться, або ні, і саме про це він дізнається з
+     * вебхука.
+     */
     @Transactional
     public boolean markProcessing(UUID paymentId) {
-        return transition(paymentId, Payment::markProcessing);
+        return transition(paymentId, Payment::markProcessing, null);
     }
 
     @Transactional
     public boolean markAuthorized(UUID paymentId) {
-        return transition(paymentId, Payment::markAuthorized);
+        return transition(paymentId, Payment::markAuthorized, PaymentEventType.PAYMENT_AUTHORIZED);
     }
 
     @Transactional
     public boolean markDeclined(UUID paymentId) {
-        return transition(paymentId, Payment::markDeclined);
+        return transition(paymentId, Payment::markDeclined, PaymentEventType.PAYMENT_DECLINED);
     }
 
     @Transactional
     public boolean markFailed(UUID paymentId) {
-        return transition(paymentId, Payment::markFailed);
+        return transition(paymentId, Payment::markFailed, PaymentEventType.PAYMENT_FAILED);
     }
 
     /**
@@ -54,18 +64,27 @@ public class PaymentProcessingService {
      * воркер (єдиний виклик на цій стадії) має просто пропустити такий платіж
      * і забрати наступний з черги, а не впасти цілим потоком через один
      * проблемний запис.
+     *
+     * <p>Запис outbox-події (коли eventType не null) відбувається тут, у тій
+     * самій транзакції, що й сам перехід стану - обидва зміни комітяться
+     * разом або не комітяться взагалі.
      */
-    private boolean transition(UUID paymentId, java.util.function.Consumer<Payment> transition) {
+    private boolean transition(UUID paymentId, Consumer<Payment> transition, PaymentEventType eventType) {
         Optional<Payment> maybePayment = paymentRepository.findById(paymentId);
         if (maybePayment.isEmpty()) {
             return false;
         }
 
+        Payment payment = maybePayment.get();
         try {
-            transition.accept(maybePayment.get());
-            return true;
+            transition.accept(payment);
         } catch (InvalidPaymentStateException | ObjectOptimisticLockingFailureException exception) {
             return false;
         }
+
+        if (eventType != null) {
+            outboxEventRecorder.record(payment, eventType);
+        }
+        return true;
     }
 }

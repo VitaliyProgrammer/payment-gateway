@@ -1,7 +1,10 @@
 package com.payflow.gateway.service;
 
 import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.entity.status.PaymentEventType;
+import com.payflow.gateway.entity.status.PaymentStatus;
 import com.payflow.gateway.exception.PaymentNotFoundException;
+import com.payflow.gateway.outbox.OutboxEventRecorder;
 import com.payflow.gateway.repository.PaymentRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -20,20 +23,26 @@ import org.springframework.transaction.annotation.Transactional;
  * стадії 2: якби ретрай-цикл викликав ці методи як this.capture(...) з того
  * самого класу, Spring не зміг би перехопити виклик своїм проксі, і
  * @Transactional тихо ігнорувалась би (self-invocation).
+ *
+ * <p>Запис outbox-події тут відбувається в тій самій транзакції, що й сама
+ * зміна стану - той самий принцип, що й у PaymentProcessingService.
  */
 @Component
 public class PaymentTransitionGuard {
 
     private final PaymentRepository paymentRepository;
+    private final OutboxEventRecorder outboxEventRecorder;
 
-    public PaymentTransitionGuard(PaymentRepository paymentRepository) {
+    public PaymentTransitionGuard(PaymentRepository paymentRepository, OutboxEventRecorder outboxEventRecorder) {
         this.paymentRepository = paymentRepository;
+        this.outboxEventRecorder = outboxEventRecorder;
     }
 
     @Transactional
     public Payment capture(UUID paymentId, UUID merchantId) {
         Payment payment = findOwnedPayment(paymentId, merchantId);
         payment.capture();
+        outboxEventRecorder.record(payment, PaymentEventType.PAYMENT_CAPTURED);
         return paymentRepository.saveAndFlush(payment);
     }
 
@@ -41,6 +50,7 @@ public class PaymentTransitionGuard {
     public Payment cancel(UUID paymentId, UUID merchantId) {
         Payment payment = findOwnedPayment(paymentId, merchantId);
         payment.cancel();
+        outboxEventRecorder.record(payment, PaymentEventType.PAYMENT_CANCELED);
         return paymentRepository.saveAndFlush(payment);
     }
 
@@ -48,6 +58,12 @@ public class PaymentTransitionGuard {
     public Payment refund(UUID paymentId, UUID merchantId, long amount) {
         Payment payment = findOwnedPayment(paymentId, merchantId);
         payment.refund(amount);
+
+        PaymentEventType eventType = payment.getStatus() == PaymentStatus.REFUNDED
+                ? PaymentEventType.PAYMENT_REFUNDED
+                : PaymentEventType.PAYMENT_PARTIALLY_REFUNDED;
+        outboxEventRecorder.record(payment, eventType);
+
         return paymentRepository.saveAndFlush(payment);
     }
 
