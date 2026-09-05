@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payflow
+      POSTGRES_USER: payflow
+      POSTGRES_PASSWORD: payflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - payflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payflow -d payflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-acquirer:
+    build:
+      context: .
+      dockerfile: mock-acquirer/Dockerfile
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/payflow
+      DB_USER: payflow
+      DB_PASSWORD: payflow
+      ACQUIRER_BASE_URL: http://mock-acquirer:9090
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-acquirer:
+        condition: service_healthy
+
+volumes:
+  payflow-postgres-data:

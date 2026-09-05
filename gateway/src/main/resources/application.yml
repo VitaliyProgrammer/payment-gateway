@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: payment-gateway
+
+  threads:
+    virtual:
+      # One virtual thread per request. Requests here spend almost all of their time
+      # blocked - on Postgres, and later on the acquirer - so a bounded platform-thread
+      # pool would just be an arbitrary ceiling that has to be guessed and tuned.
+      #
+      # Note what this does NOT remove: the connection pool below is still bounded, so
+      # under load the queue simply moves from Tomcat into Hikari. That is intentional -
+      # the database is the scarce resource, and it should be the thing that pushes back.
+      enabled: true
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/payflow}
+    username: ${DB_USER:payflow}
+    password: ${DB_PASSWORD:payflow}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: 5
+      connection-timeout: 3000
+      # Fail fast on a request rather than let it hang waiting for a connection:
+      # a payment API that answers "try again" beats one that never answers.
+      validation-timeout: 2000
+      pool-name: gateway-pool
+
+  jpa:
+    # Flyway owns the schema. Hibernate is only allowed to check that the entities
+    # still match it, never to change it - so a mapping mistake fails on startup
+    # instead of silently altering a table that holds money.
+    hibernate:
+      ddl-auto: validate
+    # Lazy loading outside a transaction is a source of accidental N+1 queries and
+    # of queries running while the HTTP response is already being written.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+  # In-flight payments must be allowed to finish before the JVM exits.
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.payflow: INFO
