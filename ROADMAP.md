@@ -18,9 +18,20 @@ Each stage leaves the application in a runnable state. Checked stages are done.
       `503`/`409` instead of `201` - Postgres serializes conflicting inserts on one
       unique key regardless of connection pool size, so that is a capacity limit, not a
       bug; a `401` or `500` would have been.
-- [ ] **Stage 3 - Asynchronous processing.** `mock-acquirer` called for real; bounded
-      queue + worker pool on virtual threads; `503 Retry-After` instead of blocking the
-      HTTP thread when the queue is full; `@Version` guarding state transitions.
+- [x] **Stage 3 - Asynchronous processing.** `mock-acquirer` called for real over HTTP
+      (`RestClient`, real network latency, deterministic decline rule for testability);
+      bounded in-memory queue drained by a fixed pool of long-lived virtual-thread
+      workers (`SmartLifecycle`-managed); `offer()` instead of `put()` so a full queue
+      returns `503 Retry-After` instead of blocking the HTTP thread; named state-transition
+      methods on `Payment` guard against invalid transitions, with `@Version` catching a
+      genuine concurrent conflict.
+      **Proves:** a full queue is rejected with `503`, not by hanging the request; an
+      acquirer approval/decline/failure each drives the payment to the correct terminal
+      status (`AUTHORIZED`/`DECLINED`/`FAILED`) without ever leaving it stuck in
+      `PROCESSING`. Found and fixed during this stage: enqueueing before the creating
+      transaction committed let a worker (fast enough on a virtual thread) query the row
+      before it existed - fixed by committing first, enqueueing second, and marking the
+      payment `FAILED` as a compensating step if the queue turns out to be full.
 - [ ] **Stage 4 - Capture / cancel / refund.** Sum invariants held under concurrency.
       **Proves:** 10 concurrent partial refunds of 20 against a 100 capture succeed
       exactly 5 times and never exceed the captured amount; concurrent capture and

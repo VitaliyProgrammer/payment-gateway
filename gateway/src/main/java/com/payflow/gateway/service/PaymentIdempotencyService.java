@@ -7,7 +7,9 @@ import com.payflow.gateway.api.PaymentResponse;
 import com.payflow.gateway.entity.status.IdempotencyStatus;
 import com.payflow.gateway.exception.IdempotencyInProgressException;
 import com.payflow.gateway.exception.IdempotencyKeyConflictException;
+import com.payflow.gateway.exception.ProcessingQueueFullException;
 import com.payflow.gateway.idempotency.*;
+import com.payflow.gateway.processing.PaymentProcessingQueue;
 import com.payflow.gateway.repository.IdempotencyRecordRepository;
 import com.payflow.gateway.entity.Payment;
 import com.payflow.gateway.util.Sha256;
@@ -41,13 +43,18 @@ public class PaymentIdempotencyService {
     private final IdempotencyGuard guard;
     private final IdempotencyRecordRepository repository;
     private final PaymentService paymentService;
+    private final PaymentProcessingQueue processingQueue;
+    private final PaymentProcessingService paymentProcessingService;
     private final ObjectMapper objectMapper;
 
     public PaymentIdempotencyService(IdempotencyGuard guard, IdempotencyRecordRepository repository,
-            PaymentService paymentService, ObjectMapper objectMapper) {
+            PaymentService paymentService, PaymentProcessingQueue processingQueue,
+            PaymentProcessingService paymentProcessingService, ObjectMapper objectMapper) {
         this.guard = guard;
         this.repository = repository;
         this.paymentService = paymentService;
+        this.processingQueue = processingQueue;
+        this.paymentProcessingService = paymentProcessingService;
         this.objectMapper = objectMapper;
     }
 
@@ -108,7 +115,26 @@ public class PaymentIdempotencyService {
     private PaymentResponse executeAndComplete(IdempotencyRecord record, UUID merchantId,
             CreatePaymentRequest request) {
         try {
-            Payment payment = paymentService.create(merchantId, request);
+            // Спершу створюємо й комітимо платіж, і лише ПОТІМ ставимо його в
+            // чергу. Порядок навпаки виглядав безпечнішим (жодного запису в
+            // базу без гарантованого місця в черзі), але на практиці створював
+            // гірший баг: воркер на віртуальному потоці забирав id із черги й
+            // ліз по нього в базу швидше, ніж встигала закомітитись транзакція
+            // create() - і завжди отримував "не знайдено". Тепер до моменту
+            // постановки в чергу рядок уже гарантовано видимий іншим
+            // транзакціям.
+            UUID paymentId = UUID.randomUUID();
+            Payment payment = paymentService.create(paymentId, merchantId, request);
+
+            if (!processingQueue.tryEnqueue(paymentId)) {
+                // Черга повна - рідкісний випадок, а не типовий шлях. Платіж
+                // уже існує в базі, тож чесніше позначити його FAILED (перехід
+                // із CREATED дозволений), ніж мовчки лишити висіти в CREATED
+                // назавжди без жодного шансу колись обробитись.
+                paymentProcessingService.markFailed(paymentId);
+                throw new ProcessingQueueFullException();
+            }
+
             PaymentResponse response = PaymentResponse.from(payment);
             guard.complete(record, HttpStatus.CREATED.value(), serialize(response));
             return response;

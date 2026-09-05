@@ -75,6 +75,59 @@ public class Payment {
         this.updatedAt = now;
     }
 
+    /**
+     * Переходи стану навмисно виражені як іменовані методи (markProcessing,
+     * markAuthorized...), а не як голий publicний setStatus(). Так неможливо
+     * випадково виставити довільний статус з довільного місця коду - кожен
+     * перехід перевіряє, з якого стану він дозволений, і кидає виняток інакше.
+     * Це не заміна @Version (той захищає від гонки на рівні бази), а захист від
+     * помилки логіки в межах одного потоку виконання.
+     */
+    public void markProcessing() {
+        requireStatus(PaymentStatus.CREATED);
+        this.status = PaymentStatus.PROCESSING;
+        touch();
+    }
+
+    public void markAuthorized() {
+        requireStatus(PaymentStatus.PROCESSING);
+        this.status = PaymentStatus.AUTHORIZED;
+        touch();
+    }
+
+    public void markDeclined() {
+        requireStatus(PaymentStatus.PROCESSING);
+        this.status = PaymentStatus.DECLINED;
+        touch();
+    }
+
+    /**
+     * FAILED тут означає "збій на нашому боці чи в комунікації з еквайром"
+     * (наприклад, еквайр не відповів), на відміну від DECLINED - "еквайр
+     * відповів і відмовив". Дозволено з CREATED і з PROCESSING: перше - коли
+     * навіть спроба зв'язатись з еквайром не відбулась, друге - коли вона
+     * провалилась під час виконання.
+     */
+    public void markFailed() {
+        requireStatus(PaymentStatus.CREATED, PaymentStatus.PROCESSING);
+        this.status = PaymentStatus.FAILED;
+        touch();
+    }
+
+    private void requireStatus(PaymentStatus... allowed) {
+        for (PaymentStatus candidate : allowed) {
+            if (this.status == candidate) {
+                return;
+            }
+        }
+        throw new IllegalStateException(
+                "Payment " + id + " is in status " + status + ", expected one of " + java.util.Arrays.toString(allowed));
+    }
+
+    private void touch() {
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

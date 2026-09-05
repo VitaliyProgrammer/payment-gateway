@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import com.payflow.gateway.exception.PaymentNotFoundException;
+import com.payflow.gateway.exception.ProcessingQueueFullException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.transaction.TransactionException;
@@ -51,6 +52,13 @@ public class ApiExceptionHandler {
         // запитом - той самий підхід, що планується для 503 на переповнену
         // чергу в стадії 3.
         return ResponseEntity.status(HttpStatus.CONFLICT)
+                .header(HttpHeaders.RETRY_AFTER, "1")
+                .body(errorBody(exception.getMessage()));
+    }
+
+    @ExceptionHandler(ProcessingQueueFullException.class)
+    public ResponseEntity<Map<String, Object>> handleQueueFull(ProcessingQueueFullException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .header(HttpHeaders.RETRY_AFTER, "1")
                 .body(errorBody(exception.getMessage()));
     }

@@ -17,9 +17,15 @@ public class PaymentService {
         this.paymentRepository = paymentRepository;
     }
 
+    /**
+     * Приймає готовий id, а не генерує його сам: викликач (див.
+     * PaymentIdempotencyService) резервує слот у черзі обробки ще ДО цього
+     * виклику, використовуючи цей самий id - а резервувати слот під ще не
+     * згенерований id неможливо.
+     */
     @Transactional
-    public Payment create(UUID merchantId, CreatePaymentRequest request) {
-        Payment payment = new Payment(UUID.randomUUID(), merchantId, request.amount(), request.currency());
+    public Payment create(UUID paymentId, UUID merchantId, CreatePaymentRequest request) {
+        Payment payment = new Payment(paymentId, merchantId, request.amount(), request.currency());
         return paymentRepository.save(payment);
     }
 
