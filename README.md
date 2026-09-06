@@ -87,30 +87,31 @@ states - the merchant only ever hears about the terminal ones, via a signed webh
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED: POST /v1/payments
+    [*] --> CREATED
     CREATED --> PROCESSING: worker picks it up
-    CREATED --> FAILED: queue full (compensating)
+    CREATED --> FAILED: queue full
     PROCESSING --> AUTHORIZED: acquirer approves
     PROCESSING --> DECLINED: acquirer declines
-    PROCESSING --> FAILED: permanent error (4xx)
-    PROCESSING --> NEEDS_RECONCILIATION: timeout / 5xx / breaker open
-    NEEDS_RECONCILIATION --> AUTHORIZED: sweeper asks, acquirer approved
-    NEEDS_RECONCILIATION --> DECLINED: sweeper asks, acquirer declined
-    NEEDS_RECONCILIATION --> FAILED: acquirer never saw it / retries exhausted
-    AUTHORIZED --> CAPTURED: POST .../capture
-    AUTHORIZED --> CANCELED: POST .../cancel
+    PROCESSING --> FAILED: permanent 4xx error
+    PROCESSING --> NEEDS_RECONCILIATION: timeout, 5xx or breaker open
+    NEEDS_RECONCILIATION --> AUTHORIZED: acquirer confirms approved
+    NEEDS_RECONCILIATION --> DECLINED: acquirer confirms declined
+    NEEDS_RECONCILIATION --> FAILED: never charged or retries exhausted
+    AUTHORIZED --> CAPTURED: capture
+    AUTHORIZED --> CANCELED: cancel
     CAPTURED --> PARTIALLY_REFUNDED: partial refund
     CAPTURED --> REFUNDED: full refund
-    PARTIALLY_REFUNDED --> PARTIALLY_REFUNDED: another partial refund
-    PARTIALLY_REFUNDED --> REFUNDED: refunds reach the captured amount
+    PARTIALLY_REFUNDED --> REFUNDED: last refund reaches the captured amount
     DECLINED --> [*]
     CANCELED --> [*]
     REFUNDED --> [*]
     FAILED --> [*]
 ```
 
-A payment abandoned in `PROCESSING` (the worker or the whole instance died mid-call) is
-picked up by the same reconciliation sweeper once it is older than a staleness threshold.
+Refunds are additive: as many partial refunds as fit under the captured amount, so a
+payment can sit in `PARTIALLY_REFUNDED` across several of them. A payment abandoned in
+`PROCESSING` (the worker or the whole instance died mid-call) is picked up by the same
+reconciliation sweeper once it is older than a staleness threshold.
 
 ***
 
