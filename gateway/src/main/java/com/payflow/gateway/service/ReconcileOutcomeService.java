@@ -1,6 +1,7 @@
 package com.payflow.gateway.service;
 
 import com.payflow.gateway.entity.status.PaymentStatus;
+import com.payflow.gateway.metrics.PaymentMetrics;
 import com.payflow.gateway.reconciliation.PaymentReconciler;
 import com.payflow.gateway.repository.PaymentRepository;
 
@@ -31,16 +32,19 @@ public class ReconcileOutcomeService {
 
     private final PaymentProcessingService processingService;
     private final PaymentRepository paymentRepository;
+    private final PaymentMetrics metrics;
     private final int maxAttempts;
     private final Duration baseBackoff;
     private final Duration maxBackoff;
 
     public ReconcileOutcomeService(PaymentProcessingService processingService, PaymentRepository paymentRepository,
+            PaymentMetrics metrics,
             @Value("${payflow.reconciliation.max-attempts:10}") int maxAttempts,
             @Value("${payflow.reconciliation.base-backoff-ms:1000}") long baseBackoffMs,
             @Value("${payflow.reconciliation.max-backoff-ms:30000}") long maxBackoffMs) {
         this.processingService = processingService;
         this.paymentRepository = paymentRepository;
+        this.metrics = metrics;
         this.maxAttempts = maxAttempts;
         this.baseBackoff = Duration.ofMillis(baseBackoffMs);
         this.maxBackoff = Duration.ofMillis(maxBackoffMs);
@@ -49,11 +53,13 @@ public class ReconcileOutcomeService {
     /** Еквайр підтвердив: платіж авторизовано. */
     public void applyAuthorized(UUID paymentId) {
         processingService.markAuthorized(paymentId);
+        metrics.reconciliationOutcome("authorized");
     }
 
     /** Еквайр підтвердив: платіж відхилено. */
     public void applyDeclined(UUID paymentId) {
         processingService.markDeclined(paymentId);
+        metrics.reconciliationOutcome("declined");
     }
 
     /**
@@ -62,6 +68,7 @@ public class ReconcileOutcomeService {
      */
     public void applyNoChargeAtAcquirer(UUID paymentId) {
         processingService.markFailed(paymentId);
+        metrics.reconciliationOutcome("no_charge");
     }
 
     /**
@@ -80,9 +87,14 @@ public class ReconcileOutcomeService {
             if (payment.getReconcileAttempts() >= maxAttempts) {
                 log.error("Reconciliation of payment {} exhausted after {} attempts, marking FAILED (last error: {})",
                         paymentId, payment.getReconcileAttempts(), error);
-                payment.markFailed();
+                // Через processingService, а не payment.markFailed() напряму: так
+                // мерчант отримає PAYMENT_FAILED-вебхук про те, що примирення
+                // здалося - інакше платіж тихо став би FAILED без сповіщення.
+                processingService.markFailed(paymentId);
+                metrics.reconciliationOutcome("exhausted_failed");
             } else {
                 payment.scheduleReconcile(Instant.now().plus(backoffFor(payment.getReconcileAttempts())), error);
+                metrics.reconciliationOutcome("retry_scheduled");
             }
         });
     }

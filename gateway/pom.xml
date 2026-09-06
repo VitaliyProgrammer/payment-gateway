@@ -54,11 +54,16 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Додає /actuator/prometheus для Grafana-дашборду, який з'явиться на стадії 7. -->
+        <!--
+            /actuator/prometheus для Grafana-дашборду (стадія 7). У цій зв'язці
+            (Boot 3.5 + Micrometer 1.15) автоконфіг реєстру не спрацьовує, тож
+            реєстр і scrape-ендпоінт піднімаються явно - див.
+            metrics/PrometheusEndpointConfig. Тому compile, а не runtime: класи
+            цих типів потрібні на етапі компіляції.
+        -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
-            <scope>runtime</scope>
         </dependency>
 
         <dependency>

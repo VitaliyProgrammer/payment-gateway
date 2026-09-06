@@ -130,4 +130,17 @@ public class AcquirerCircuitBreaker {
             lock.unlock();
         }
     }
+
+    /**
+     * Числовий код стану для gauge-метрики
+     * {@code payflow.acquirer.circuit_breaker.state} (стадія 7):
+     * 0 = CLOSED, 1 = HALF_OPEN, 2 = OPEN.
+     */
+    public int stateCode() {
+        return switch (currentState()) {
+            case CLOSED -> 0;
+            case HALF_OPEN -> 1;
+            case OPEN -> 2;
+        };
+    }
 }

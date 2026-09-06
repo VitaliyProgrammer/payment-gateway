@@ -11,6 +11,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import java.util.UUID;
 
 import com.payflow.gateway.exception.AcquirerUnavailableException;
+import com.payflow.gateway.metrics.PaymentMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -30,10 +32,12 @@ import org.springframework.web.client.ResourceAccessException;
 class AcquirerClientTest {
 
     @Test
-    void authorizeReturnsApprovedOutcome() {
+    void authorizeReturnsApprovedOutcomeAndRecordsATimer() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://mock-acquirer");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000));
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000),
+                new PaymentMetrics(registry));
 
         UUID paymentId = UUID.randomUUID();
         server.expect(requestTo("http://mock-acquirer/charges"))
@@ -46,13 +50,16 @@ class AcquirerClientTest {
 
         assertThat(outcome).isEqualTo(AcquirerOutcome.APPROVED);
         server.verify();
+        assertThat(registry.get("payflow.acquirer.calls")
+                .tag("operation", "authorize").tag("outcome", "approved").timer().count()).isEqualTo(1L);
     }
 
     @Test
     void authorizeReturnsDeclinedOutcome() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://mock-acquirer");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000));
+        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000),
+                new PaymentMetrics(new SimpleMeterRegistry()));
 
         UUID paymentId = UUID.randomUUID();
         server.expect(requestTo("http://mock-acquirer/charges"))
@@ -71,7 +78,8 @@ class AcquirerClientTest {
     void transportFailureBecomesAcquirerUnavailable() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://mock-acquirer");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000));
+        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000),
+                new PaymentMetrics(new SimpleMeterRegistry()));
 
         server.expect(requestTo("http://mock-acquirer/charges"))
                 .andRespond(request -> {
@@ -86,7 +94,8 @@ class AcquirerClientTest {
     void serverErrorBecomesAcquirerUnavailable() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://mock-acquirer");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000));
+        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000),
+                new PaymentMetrics(new SimpleMeterRegistry()));
 
         server.expect(requestTo("http://mock-acquirer/charges")).andRespond(withServerError());
 
@@ -98,7 +107,8 @@ class AcquirerClientTest {
     void getChargeReturnsEmptyWhenAcquirerNeverSawThePayment() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://mock-acquirer");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000));
+        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000),
+                new PaymentMetrics(new SimpleMeterRegistry()));
 
         UUID paymentId = UUID.randomUUID();
         server.expect(requestTo("http://mock-acquirer/charges/" + paymentId))
@@ -113,7 +123,8 @@ class AcquirerClientTest {
     void getChargeReturnsRecordedOutcome() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://mock-acquirer");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000));
+        AcquirerClient client = new AcquirerClient(builder.build(), new AcquirerCircuitBreaker(100, 10_000),
+                new PaymentMetrics(new SimpleMeterRegistry()));
 
         UUID paymentId = UUID.randomUUID();
         server.expect(requestTo("http://mock-acquirer/charges/" + paymentId))

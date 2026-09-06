@@ -3,6 +3,7 @@ package com.payflow.gateway.service;
 import com.payflow.gateway.entity.Payment;
 import com.payflow.gateway.entity.status.PaymentEventType;
 import com.payflow.gateway.exception.InvalidPaymentStateException;
+import com.payflow.gateway.metrics.PaymentMetrics;
 import com.payflow.gateway.outbox.OutboxEventRecorder;
 import com.payflow.gateway.repository.PaymentRepository;
 import java.util.Optional;
@@ -26,10 +27,13 @@ public class PaymentProcessingService {
 
     private final PaymentRepository paymentRepository;
     private final OutboxEventRecorder outboxEventRecorder;
+    private final PaymentMetrics metrics;
 
-    public PaymentProcessingService(PaymentRepository paymentRepository, OutboxEventRecorder outboxEventRecorder) {
+    public PaymentProcessingService(PaymentRepository paymentRepository, OutboxEventRecorder outboxEventRecorder,
+            PaymentMetrics metrics) {
         this.paymentRepository = paymentRepository;
         this.outboxEventRecorder = outboxEventRecorder;
+        this.metrics = metrics;
     }
 
     /**
@@ -96,6 +100,7 @@ public class PaymentProcessingService {
         if (eventType != null) {
             outboxEventRecorder.record(payment, eventType);
         }
+        metrics.transitioned(payment.getStatus());
         return true;
     }
 }

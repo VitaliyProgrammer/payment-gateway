@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
@@ -51,7 +52,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                     .ifPresent(merchant -> {
                         MerchantPrincipal principal = new MerchantPrincipal(merchant.getId());
                         var authentication =
-                                new UsernamePasswordAuthenticationToken(principal, null, java.util.List.of());
+                                new UsernamePasswordAuthenticationToken(principal, null, List.of());
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                     });
         } catch (DataAccessException | TransactionException exception) {

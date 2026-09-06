@@ -26,6 +26,7 @@
     <modules>
         <module>gateway</module>
         <module>mock-acquirer</module>
+        <module>benchmark</module>
     </modules>
 
     <properties>

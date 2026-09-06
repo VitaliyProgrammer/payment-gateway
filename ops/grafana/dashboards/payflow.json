@@ -1,0 +1,139 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-15m", "to": "now" },
+  "refresh": "5s",
+  "title": "Payflow gateway",
+  "uid": "payflow-gateway",
+  "schemaVersion": 39,
+  "tags": ["payflow"],
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "row", "title": "Traffic", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries", "title": "HTTP request rate by status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (status) (rate(http_server_requests_seconds_count{service=\"gateway\", uri!~\".*actuator.*\"}[1m]))",
+          "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "HTTP latency (p50 / p95 / p99)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{service=\"gateway\"}[5m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{service=\"gateway\"}[5m])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service=\"gateway\"}[5m])))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "type": "row", "title": "Payments", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+    },
+    {
+      "type": "timeseries", "title": "Payments created / s",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 40 } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(payflow_payments_accepted_total[1m]))", "legendFormat": "accepted", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "State transitions / s by new status",
+      "gridPos": { "h": 8, "w": 10, "x": 8, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (status) (rate(payflow_payments_transitions_total[1m]))", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Processing queue depth",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "expr": "payflow_processing_queue_depth{service=\"gateway\"}", "legendFormat": "depth", "refId": "A" },
+        { "expr": "sum by (outcome) (rate(payflow_processing_queue_enqueue_total[1m]))", "legendFormat": "enqueue {{outcome}}", "refId": "B" }
+      ]
+    },
+    {
+      "type": "row", "title": "Acquirer & resilience", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 }
+    },
+    {
+      "type": "stat", "title": "Circuit breaker",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 19 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CLOSED", "color": "green" } } },
+            { "type": "value", "options": { "1": { "text": "HALF-OPEN", "color": "yellow" } } },
+            { "type": "value", "options": { "2": { "text": "OPEN", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        { "expr": "max(payflow_acquirer_circuit_breaker_state{service=\"gateway\"})", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Acquirer call latency p99 by operation",
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum by (le, operation) (rate(payflow_acquirer_calls_seconds_bucket[5m])))", "legendFormat": "{{operation}} p99", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Acquirer call outcomes / s",
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(payflow_acquirer_calls_seconds_count[1m]))", "legendFormat": "{{outcome}}", "refId": "A" }
+      ]
+    },
+    {
+      "type": "row", "title": "Persistence & delivery", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }
+    },
+    {
+      "type": "timeseries", "title": "Hikari connection pool",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "hikaricp_connections_active{service=\"gateway\"}", "legendFormat": "active", "refId": "A" },
+        { "expr": "hikaricp_connections_pending{service=\"gateway\"}", "legendFormat": "pending", "refId": "B" },
+        { "expr": "hikaricp_connections_idle{service=\"gateway\"}", "legendFormat": "idle", "refId": "C" },
+        { "expr": "hikaricp_connections_max{service=\"gateway\"}", "legendFormat": "max", "refId": "D" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Outbox backlog",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "expr": "payflow_outbox_pending{service=\"gateway\"}", "legendFormat": "pending", "refId": "A" },
+        { "expr": "payflow_outbox_dead_letter{service=\"gateway\"}", "legendFormat": "dead-letter", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Reconciliation",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "expr": "payflow_reconciliation_pending{service=\"gateway\"}", "legendFormat": "pending", "refId": "A" },
+        { "expr": "sum by (outcome) (rate(payflow_reconciliation_outcome_total[5m]))", "legendFormat": "{{outcome}} /s", "refId": "B" }
+      ]
+    }
+  ]
+}

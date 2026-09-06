@@ -42,7 +42,7 @@ vehicle for demonstrating things that are easy to *claim* and hard to *fake*:
 - PostgreSQL + Flyway (schema owned by migrations, not by Hibernate)
 - A hand-rolled circuit breaker on the acquirer (same style as the rest of the
   resilience primitives here - small, commented, no extra dependency)
-- Micrometer + Actuator + Prometheus
+- Micrometer + Actuator + Prometheus + a pre-provisioned Grafana dashboard
 - JUnit 5, Testcontainers (real Postgres in tests), Awaitility
 - Docker Compose, GitHub Actions
 
@@ -88,6 +88,35 @@ curl -X POST localhost:8080/v1/payments \
 (Postgres and the mock acquirer still need to be reachable - either via
 `docker compose up postgres mock-acquirer`, or point `DB_URL` / `ACQUIRER_BASE_URL` at
 your own instances.)
+
+***
+
+## 📈 Metrics & dashboard
+
+```bash
+docker compose --profile monitoring up --build
+```
+
+Adds Prometheus (`localhost:9091`) and Grafana (`localhost:3000`, anonymous viewing
+enabled). The **Payflow gateway** dashboard is provisioned automatically - queue depth,
+per-status transition rate, acquirer call latency and outcomes, circuit-breaker state,
+Hikari pool, outbox backlog and reconciliation lag - alongside the raw metrics at
+`localhost:8080/actuator/prometheus`.
+
+***
+
+## 🏁 Benchmark
+
+```bash
+ops/benchmark/run-benchmark.sh
+```
+
+Runs the same closed-loop load (create a payment, poll until it reaches a terminal
+status, repeat) against the gateway twice - once with platform threads on Tomcat, once
+with virtual threads - and prints the two Markdown tables. The load generator
+(`benchmark` module) is plain `java.net.http` on virtual threads, no external tooling.
+Needs a local JDK 21 and Docker. The concurrency section with the results table is
+added in stage 8.
 
 ***
 

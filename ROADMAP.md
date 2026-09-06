@@ -111,9 +111,29 @@ Each stage leaves the application in a runnable state. Checked stages are done.
       about processing (`PaymentApiTest`, `PaymentIdempotencyTest`), the same approach
       `PaymentProcessingTest` already took - so no test generates reconciliation traffic
       it does not assert on.
-- [ ] **Stage 7 - Observability and benchmark.** Micrometer metrics, Grafana dashboard
-      in Compose, a load test comparing platform-thread and virtual-thread throughput
-      under the same concurrent load.
+- [x] **Stage 7 - Observability and benchmark.** A focused set of domain metrics on top
+      of Spring Boot's auto-instrumentation (HTTP, Hikari, JVM): `payflow.payments.accepted`
+      / `.transitions` (counter tagged by new status), `payflow.processing.queue.depth`
+      / `.enqueue`, `payflow.acquirer.calls` (timer tagged operation + outcome, with a
+      percentile histogram), `payflow.acquirer.circuit_breaker.state` (0/1/2 gauge),
+      `payflow.outbox.pending` / `.dead_letter`, `payflow.reconciliation.pending` /
+      `.outcome`. Metric writes live in a thin `PaymentMetrics` facade called *after* the
+      real work, never in a code path that can fail or block on them; the gauges backed
+      by row counts are polled at scrape time, not on a schedule. Prometheus and a
+      pre-provisioned Grafana dashboard are added to Compose behind a `monitoring`
+      profile (`docker compose --profile monitoring up`), and `mock-acquirer` now exposes
+      `/actuator/prometheus` too. The benchmark is a dependency-free `benchmark` module:
+      `java.net.http` on virtual threads, closed-loop (each simulated client creates a
+      payment and polls until it reaches a terminal status, then loops), hand-rolled
+      nearest-rank percentiles. `ops/benchmark/run-benchmark.sh` runs the identical load
+      against the gateway twice - `spring.threads.virtual.enabled` false then true, with
+      the processing-worker pool raised so the acquirer drain rate is not the ceiling -
+      and prints both Markdown tables. It is deliberately not wired into CI.
+      **Proves:** every domain metric named above is present on `/actuator/prometheus`
+      after a payment is processed; `PaymentMetrics` maps each event to the expected
+      meter name and tags (`SimpleMeterRegistry` unit test); the acquirer timer is
+      actually recorded from inside `AcquirerClient`, tagged with the call's outcome. The
+      platform-vs-virtual comparison table itself lands in the README in stage 8.
 - [ ] **Stage 8 - README and demo.** Concurrency section with the benchmark table,
       state-machine diagram, one-command `docker compose up` demo.
 

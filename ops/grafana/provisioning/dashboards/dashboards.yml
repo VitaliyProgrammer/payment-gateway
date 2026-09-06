@@ -1,0 +1,13 @@
+# Вантажить будь-який *.json з /var/lib/grafana/dashboards як готовий дашборд.
+apiVersion: 1
+
+providers:
+  - name: payflow
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

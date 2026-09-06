@@ -1,0 +1,25 @@
+# Prometheus для локального стека (стадія 7). Піднімається профілем "monitoring":
+#   docker compose --profile monitoring up
+# Скрейпить Actuator-експортери gateway і mock-acquirer у мережі compose.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["gateway:8080"]
+        labels:
+          service: gateway
+
+  - job_name: mock-acquirer
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["mock-acquirer:9090"]
+        labels:
+          service: mock-acquirer
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
