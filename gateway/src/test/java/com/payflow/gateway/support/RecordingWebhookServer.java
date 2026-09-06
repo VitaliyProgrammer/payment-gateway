@@ -10,11 +10,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Стенд замість справжнього сервера мерчанта - JDK-вий HttpServer, без нових
@@ -27,6 +29,9 @@ public class RecordingWebhookServer implements AutoCloseable {
     private final HttpServer server;
     private final BlockingQueue<RecordedWebhookRequest> received = new LinkedBlockingQueue<>();
     private final AtomicInteger failuresToInject = new AtomicInteger(0);
+    // Коли задано, ін'єктовані 500 застосовуються лише до вебхуків цього платежу -
+    // щоб чужий (протеклий з іншого тестового класу) вебхук не "з'їв" відмову.
+    private final AtomicReference<UUID> failOnlyFor = new AtomicReference<>();
 
     public RecordingWebhookServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -39,9 +44,12 @@ public class RecordingWebhookServer implements AutoCloseable {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String signature = exchange.getRequestHeaders().getFirst("X-Payflow-Signature");
         String eventType = exchange.getRequestHeaders().getFirst("X-Payflow-Event-Type");
-        received.add(new RecordedWebhookRequest(body, signature, eventType));
+        RecordedWebhookRequest request = new RecordedWebhookRequest(body, signature, eventType);
+        received.add(request);
 
-        boolean shouldFail = failuresToInject.getAndUpdate(n -> Math.max(0, n - 1)) > 0;
+        UUID onlyFor = failOnlyFor.get();
+        boolean eligible = onlyFor == null || request.isFor(onlyFor);
+        boolean shouldFail = eligible && failuresToInject.getAndUpdate(n -> Math.max(0, n - 1)) > 0;
         int status = shouldFail ? 500 : 200;
         exchange.sendResponseHeaders(status, -1);
         try (OutputStream ignored = exchange.getResponseBody()) {
@@ -55,7 +63,52 @@ public class RecordingWebhookServer implements AutoCloseable {
 
     /** Наступні {@code count} вхідних викликів отримають 500 замість 200. */
     public void failNextAttempts(int count) {
+        failOnlyFor.set(null);
         failuresToInject.set(count);
+    }
+
+    /** Те саме, але 500 отримають лише вебхуки саме про {@code paymentId}. */
+    public void failNextAttemptsFor(UUID paymentId, int count) {
+        failOnlyFor.set(paymentId);
+        failuresToInject.set(count);
+    }
+
+    /**
+     * Наступний вебхук саме про цей платіж, пропускаючи (і відкидаючи) чужі, що
+     * могли протекти з іншого тестового класу через спільну базу демо-мерчанта.
+     */
+    public RecordedWebhookRequest awaitNextFor(UUID paymentId, Duration timeout) {
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
+        try {
+            while (System.nanoTime() < deadlineNanos) {
+                long ms = Math.max(1L, (deadlineNanos - System.nanoTime()) / 1_000_000L);
+                RecordedWebhookRequest request = received.poll(ms, TimeUnit.MILLISECONDS);
+                if (request == null) {
+                    break;
+                }
+                if (request.isFor(paymentId)) {
+                    return request;
+                }
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
+        throw new AssertionError("No webhook for payment " + paymentId + " within " + timeout);
+    }
+
+    public List<RecordedWebhookRequest> awaitCountFor(UUID paymentId, int count, Duration timeout) {
+        List<RecordedWebhookRequest> collected = new ArrayList<>();
+        Instant deadline = Instant.now().plus(timeout);
+        while (collected.size() < count) {
+            Duration remaining = Duration.between(Instant.now(), deadline);
+            if (remaining.isNegative()) {
+                throw new AssertionError("Expected " + count + " webhooks for payment " + paymentId
+                        + " but got " + collected.size() + " within " + timeout);
+            }
+            collected.add(awaitNextFor(paymentId, remaining));
+        }
+        return collected;
     }
 
     public RecordedWebhookRequest awaitNext(Duration timeout) {
