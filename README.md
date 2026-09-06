@@ -40,7 +40,8 @@ vehicle for demonstrating things that are easy to *claim* and hard to *fake*:
 - Java 21 (LTS) with virtual threads
 - Spring Boot 3, Spring Data JPA / Hibernate
 - PostgreSQL + Flyway (schema owned by migrations, not by Hibernate)
-- Resilience4j (circuit breaker on the acquirer)
+- A hand-rolled circuit breaker on the acquirer (same style as the rest of the
+  resilience primitives here - small, commented, no extra dependency)
 - Micrometer + Actuator + Prometheus
 - JUnit 5, Testcontainers (real Postgres in tests), Awaitility
 - Docker Compose, GitHub Actions

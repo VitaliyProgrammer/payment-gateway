@@ -54,6 +54,21 @@ public class Payment {
     @Column(nullable = false)
     private long version;
 
+    /**
+     * Стан примирення (стадія 6). Заповнені лише для платежів, які пройшли через
+     * NEEDS_RECONCILIATION: {@code reconcileAttempts} рахує спроби sweeper-а
+     * дізнатись підсумок у еквайра, {@code reconcileNextAt} - і backoff між
+     * ними, і оренда на час активної спроби (див. міграцію V7).
+     */
+    @Column(name = "reconcile_attempts", nullable = false)
+    private int reconcileAttempts;
+
+    @Column(name = "reconcile_next_at")
+    private Instant reconcileNextAt;
+
+    @Column(name = "last_reconcile_error")
+    private String lastReconcileError;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -91,14 +106,54 @@ public class Payment {
         touch();
     }
 
-    public void markAuthorized() {
+    /**
+     * NEEDS_RECONCILIATION (стадія 6): виклик до еквайра завершився таймаутом
+     * читання або 5xx - запит пішов, але підсумок невідомий. Не термінальний
+     * стан: фоновий sweeper пізніше запитає в еквайра, чим усе скінчилось, і
+     * доведе платіж до AUTHORIZED / DECLINED / FAILED. Дозволено лише з
+     * PROCESSING - у цей момент воркер уже зробив markProcessing і саме
+     * викликав еквайра.
+     */
+    public void markNeedsReconciliation() {
         requireStatus(PaymentStatus.PROCESSING);
+        this.status = PaymentStatus.NEEDS_RECONCILIATION;
+        this.reconcileNextAt = Instant.now();
+        touch();
+    }
+
+    /**
+     * Захоплення платежу sweeper-ом "в оренду": відсуває reconcileNextAt у
+     * майбутнє (щоб інший sweeper чи інстанс його не підхопив) і рахує спробу.
+     * Той самий патерн, що й {@code OutboxEvent.claim} на стадії 5.
+     */
+    public void claimForReconciliation(Instant leaseUntil) {
+        requireStatus(PaymentStatus.NEEDS_RECONCILIATION);
+        this.reconcileAttempts++;
+        this.reconcileNextAt = leaseUntil;
+        touch();
+    }
+
+    /**
+     * Еквайр і сам зараз недоступний - відкласти наступну спробу примирення
+     * (backoff) і запам'ятати помилку. Лічильник спроб уже збільшив
+     * {@link #claimForReconciliation}, тут його чіпати не треба - так само, як
+     * {@code OutboxEvent.scheduleRetry} не чіпає attempts.
+     */
+    public void scheduleReconcile(Instant nextAttemptAt, String error) {
+        requireStatus(PaymentStatus.NEEDS_RECONCILIATION);
+        this.reconcileNextAt = nextAttemptAt;
+        this.lastReconcileError = truncate(error);
+        touch();
+    }
+
+    public void markAuthorized() {
+        requireStatus(PaymentStatus.PROCESSING, PaymentStatus.NEEDS_RECONCILIATION);
         this.status = PaymentStatus.AUTHORIZED;
         touch();
     }
 
     public void markDeclined() {
-        requireStatus(PaymentStatus.PROCESSING);
+        requireStatus(PaymentStatus.PROCESSING, PaymentStatus.NEEDS_RECONCILIATION);
         this.status = PaymentStatus.DECLINED;
         touch();
     }
@@ -106,12 +161,13 @@ public class Payment {
     /**
      * FAILED тут означає "збій на нашому боці чи в комунікації з еквайром"
      * (наприклад, еквайр не відповів), на відміну від DECLINED - "еквайр
-     * відповів і відмовив". Дозволено з CREATED і з PROCESSING: перше - коли
-     * навіть спроба зв'язатись з еквайром не відбулась, друге - коли вона
-     * провалилась під час виконання.
+     * відповів і відмовив". Дозволено з CREATED, PROCESSING і
+     * NEEDS_RECONCILIATION: перше - коли навіть спроба зв'язатись з еквайром не
+     * відбулась; друге - коли вона провалилась під час виконання; третє - коли
+     * примирення вичерпало спроби або еквайр підтвердив, що запиту не бачив.
      */
     public void markFailed() {
-        requireStatus(PaymentStatus.CREATED, PaymentStatus.PROCESSING);
+        requireStatus(PaymentStatus.CREATED, PaymentStatus.PROCESSING, PaymentStatus.NEEDS_RECONCILIATION);
         this.status = PaymentStatus.FAILED;
         touch();
     }
@@ -172,6 +228,13 @@ public class Payment {
         this.updatedAt = Instant.now();
     }
 
+    private static String truncate(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= 500 ? value : value.substring(0, 500);
+    }
+
     public UUID getId() {
         return id;
     }
@@ -202,6 +265,18 @@ public class Payment {
 
     public long getVersion() {
         return version;
+    }
+
+    public int getReconcileAttempts() {
+        return reconcileAttempts;
+    }
+
+    public Instant getReconcileNextAt() {
+        return reconcileNextAt;
+    }
+
+    public String getLastReconcileError() {
+        return lastReconcileError;
     }
 
     public Instant getCreatedAt() {

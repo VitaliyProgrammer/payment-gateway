@@ -43,6 +43,17 @@ public class PaymentProcessingService {
         return transition(paymentId, Payment::markProcessing, null);
     }
 
+    /**
+     * Як і markProcessing - без outbox-події: NEEDS_RECONCILIATION теж
+     * внутрішній, транзитний стан. Мерчанту поки нема про що повідомляти,
+     * підсумок ще невідомий; про фінал (AUTHORIZED / DECLINED / FAILED) він
+     * дізнається з вебхука, коли примирення завершиться.
+     */
+    @Transactional
+    public boolean markNeedsReconciliation(UUID paymentId) {
+        return transition(paymentId, Payment::markNeedsReconciliation, null);
+    }
+
     @Transactional
     public boolean markAuthorized(UUID paymentId) {
         return transition(paymentId, Payment::markAuthorized, PaymentEventType.PAYMENT_AUTHORIZED);
