@@ -164,6 +164,12 @@ Host ports: gateway `8080`, Postgres `5432`, mock acquirer `8090` (**not** `9090
 clashes too often on shared machines), Prometheus `9091`, Grafana `3000`. Override any of
 them, and `IMAGE_BASE` for the pre-built images, with a `.env` file - see `.env.example`.
 
+The demo merchant key and webhook secret are seeded by the migrations and work only
+against the local DB. The app reads **all** credentials (`DB_*`, and per-merchant
+secrets from the `merchants` table) from the environment / database, never from source,
+so a real deployment injects them from a secrets manager as env vars with nothing else
+to change.
+
 **Locally, without Docker for the app itself:**
 
 ```bash
@@ -187,6 +193,10 @@ enabled). The **Payflow gateway** dashboard is provisioned automatically - queue
 per-status transition rate, acquirer call latency and outcomes, circuit-breaker state,
 Hikari pool, outbox backlog and reconciliation lag - alongside the raw metrics at
 `localhost:8080/actuator/prometheus`.
+
+`ops/grafana-screenshot.sh` brings the stack up, pushes a little load through it and
+server-renders the dashboard to `docs/grafana-dashboard.png` (via the `renderer`
+service on the `monitoring` profile).
 
 ***
 

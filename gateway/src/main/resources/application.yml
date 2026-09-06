@@ -154,3 +154,13 @@ logging:
   level:
     root: INFO
     com.payflow: INFO
+  # Показуємо requestId (з RequestCorrelationFilter) і в текстовому виводі.
+  pattern:
+    level: "%5p [%X{requestId:-}]"
+  # Порожньо - людиночитний вивід (локальна розробка). LOG_FORMAT=ecs у
+  # docker-compose перемикає на однорядковий JSON (Elastic Common Schema), який
+  # уміє парсити будь-який збирач логів. MDC-ключ requestId потрапляє в кожен
+  # запис автоматично.
+  structured:
+    format:
+      console: ${LOG_FORMAT:}

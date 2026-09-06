@@ -45,6 +45,7 @@ services:
       DB_USER: payflow
       DB_PASSWORD: payflow
       ACQUIRER_BASE_URL: http://mock-acquirer:9090
+      LOG_FORMAT: ecs
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
