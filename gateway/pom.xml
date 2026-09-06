@@ -36,6 +36,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!--
+            OpenAPI-опис і Swagger UI на /swagger-ui.html. Версія явна - цей
+            артефакт не входить у BOM Spring Boot; 2.8.x - лінійка під Boot 3.5.
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.9</version>
+        </dependency>
 
         <!-- Схемою бази володіє Flyway; Hibernate лише звіряє її з сутностями. -->
         <dependency>

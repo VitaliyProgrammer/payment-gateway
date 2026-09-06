@@ -1,5 +1,8 @@
 ## 💳 Payment Gateway
 
+[![CI](https://github.com/VitaliyProgrammer/payment-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/VitaliyProgrammer/payment-gateway/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A payment gateway in the shape of Stripe/Fondy, not a wallet in the shape of PayPal: it
 authorizes and captures payments on behalf of merchants and talks to an acquiring bank
 on their behalf. It does not hold customer balances or move money between users - that
@@ -43,6 +46,7 @@ vehicle for demonstrating things that are easy to *claim* and hard to *fake*:
 - A hand-rolled circuit breaker on the acquirer (same style as the rest of the
   resilience primitives here - small, commented, no extra dependency)
 - Micrometer + Actuator + Prometheus + a pre-provisioned Grafana dashboard
+- OpenAPI 3 / Swagger UI (springdoc)
 - JUnit 5, Testcontainers (real Postgres in tests), Awaitility
 - Docker Compose, GitHub Actions
 
@@ -153,6 +157,8 @@ curl -X POST localhost:8080/v1/payments \
 
 `ops/demo.sh` (what `./run.sh` calls) walks the lifecycle: create, poll to a terminal
 status, capture, partial refund, and a repeated idempotency key returning the same id.
+The full API is browsable at `localhost:8080/swagger-ui.html` (`/v3/api-docs` for the
+raw spec).
 
 Host ports: gateway `8080`, Postgres `5432`, mock acquirer `8090` (**not** `9090` - it
 clashes too often on shared machines), Prometheus `9091`, Grafana `3000`. Override any of
@@ -198,16 +204,12 @@ immediately starts another - against the gateway twice: once with
 `true`. The processing-worker pool is raised for the run so the acquirer drain rate is
 not the ceiling; the acquirer adds 50-300&nbsp;ms of simulated latency per authorize.
 
-Numbers are machine-specific and the high-concurrency rows are only meaningful on a
-machine that is not itself memory-starved, so the table here is left for you to fill
-from your own run - the script writes the combined result to `ops/benchmark/results.md`.
-Defaults are `LEVELS=50,200,500,1000`, 20&nbsp;s measured per level.
-
-<!-- BENCHMARK_TABLE_START -->
-| profile | conc | completed | thr/s | p50 ms | p90 ms | p99 ms | max ms | http-err | conn-err | timeout |
-|--------:|-----:|----------:|------:|-------:|-------:|-------:|-------:|---------:|---------:|--------:|
-| _run `ops/benchmark/run-benchmark.sh`_ | | | | | | | | | | |
-<!-- BENCHMARK_TABLE_END -->
+The script builds both jars, brings up Postgres, runs the load at each concurrency level
+(`LEVELS=50,200,500,1000` by default, 20&nbsp;s measured each) and writes a combined
+Markdown table to `ops/benchmark/results.md`. Absolute numbers are hardware-specific -
+run it on your own machine; what matters is the shape.
+<!-- paste ops/benchmark/results.md between these markers to publish it -->
+<!-- BENCHMARK_TABLE_START --><!-- BENCHMARK_TABLE_END -->
 
 **What to look for.** The connection pool is the deliberate bottleneck (see *Concurrency
 notes*), so peak *throughput* converges between the two thread models - the DB serves the

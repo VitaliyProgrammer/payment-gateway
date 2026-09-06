@@ -1,4 +1,4 @@
-package com.payflow.gateway.conroller;
+package com.payflow.gateway.controller;
 
 import com.payflow.gateway.api.CreatePaymentRequest;
 import com.payflow.gateway.api.CreateRefundRequest;
