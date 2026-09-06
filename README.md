@@ -117,12 +117,29 @@ picked up by the same reconciliation sweeper once it is older than a staleness t
 
 ## ▶️ Running it
 
+**One command** - builds the images, starts the stack, then walks a payment through its
+whole lifecycle (create → authorize → capture → refund) and prints each step:
+
 ```bash
-docker compose up --build
+./run.sh                 # add --monitoring for Prometheus + Grafana; ./run.sh down to stop
 ```
 
-That brings up Postgres, the mock acquirer and the gateway on `localhost:8080`. The demo
-merchant (`demo-merchant-api-key`, seeded by the migrations) is ready immediately:
+**Without building** - pull the pre-built images (published to GHCR on every push to
+`main`), ~30 s to ready instead of a Maven build:
+
+```bash
+docker compose -f docker-compose.prod.yml up
+```
+
+**Plain compose:**
+
+```bash
+docker compose up --build          # + --profile monitoring for the dashboard
+```
+
+Any of these brings up Postgres, the mock acquirer and the gateway on `localhost:8080`.
+The demo merchant (`demo-merchant-api-key`, seeded by the migrations) is ready
+immediately:
 
 ```bash
 curl -X POST localhost:8080/v1/payments \
@@ -131,12 +148,12 @@ curl -X POST localhost:8080/v1/payments \
   -d '{"amount": 5000, "currency": "UAH"}'
 ```
 
-`ops/demo.sh` walks the whole lifecycle against that stack - create, poll to a terminal
+`ops/demo.sh` (what `./run.sh` calls) walks the lifecycle: create, poll to a terminal
 status, capture, partial refund, and a repeated idempotency key returning the same id.
 
 Host ports: gateway `8080`, Postgres `5432`, mock acquirer `8090` (**not** `9090` - it
 clashes too often on shared machines), Prometheus `9091`, Grafana `3000`. Override any of
-them with a `.env` file - see `.env.example`.
+them, and `IMAGE_BASE` for the pre-built images, with a `.env` file - see `.env.example`.
 
 **Locally, without Docker for the app itself:**
 
