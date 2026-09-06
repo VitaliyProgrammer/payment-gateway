@@ -65,16 +65,16 @@ vehicle for demonstrating things that are easy to *claim* and hard to *fake*:
 
 Every row is a Testcontainers test against a real Postgres, run in CI.
 
-| Concern | Proven by | Stage |
-|---|---|---|
-| Idempotency under a real race | 200 concurrent same-key requests create **exactly one** payment | 2 |
-| Honest overload | a saturated connection pool answers `503`/`409` with `Retry-After`, never a misleading `401`/`500` | 2 |
-| Async backpressure | a full processing queue answers `503`, it never blocks the request thread | 3 |
-| Guarded state machine | concurrent `capture` and `cancel` on one payment: exactly one wins, the other gets `409` | 4 |
-| Sum invariant | 10 concurrent partial refunds of 20 against a 100 capture succeed exactly 5 times, the total never exceeds the capture | 4 |
-| Ordered delivery | webhooks for one payment arrive in order even when an earlier one is mid-retry | 5 |
-| Dead-lettering | a webhook that fails every attempt lands in `DEAD_LETTER`, not stuck `PENDING` forever | 5 |
-| No double charge | a timed-out acquirer call is resolved by *asking* the acquirer, not re-charging - the charge is sent exactly once | 6 |
+| Concern | Proven by |
+|---|---|
+| Idempotency under a real race | 200 concurrent same-key requests create **exactly one** payment |
+| Honest overload | a saturated connection pool answers `503`/`409` with `Retry-After`, never a misleading `401`/`500` |
+| Async backpressure | a full processing queue answers `503`, it never blocks the request thread |
+| Guarded state machine | concurrent `capture` and `cancel` on one payment: exactly one wins, the other gets `409` |
+| Sum invariant | 10 concurrent partial refunds of 20 against a 100 capture succeed exactly 5 times, the total never exceeds the capture |
+| Ordered delivery | webhooks for one payment arrive in order even when an earlier one is mid-retry |
+| Dead-lettering | a webhook that fails every attempt lands in `DEAD_LETTER`, not stuck `PENDING` forever |
+| No double charge | a timed-out acquirer call is resolved by *asking* the acquirer, not re-charging - the charge is sent exactly once |
 
 ***
 
