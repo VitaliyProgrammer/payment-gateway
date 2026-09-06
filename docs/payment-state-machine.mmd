@@ -1,0 +1,20 @@
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> PROCESSING: worker picks it up
+    CREATED --> FAILED: queue full
+    PROCESSING --> AUTHORIZED: acquirer approves
+    PROCESSING --> DECLINED: acquirer declines
+    PROCESSING --> FAILED: permanent 4xx error
+    PROCESSING --> NEEDS_RECONCILIATION: timeout, 5xx or breaker open
+    NEEDS_RECONCILIATION --> AUTHORIZED: acquirer confirms approved
+    NEEDS_RECONCILIATION --> DECLINED: acquirer confirms declined
+    NEEDS_RECONCILIATION --> FAILED: never charged or retries exhausted
+    AUTHORIZED --> CAPTURED: capture
+    AUTHORIZED --> CANCELED: cancel
+    CAPTURED --> PARTIALLY_REFUNDED: partial refund
+    CAPTURED --> REFUNDED: full refund
+    PARTIALLY_REFUNDED --> REFUNDED: last refund reaches the captured amount
+    DECLINED --> [*]
+    CANCELED --> [*]
+    REFUNDED --> [*]
+    FAILED --> [*]

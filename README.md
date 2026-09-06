@@ -102,28 +102,10 @@ otherwise; the `version` column makes two concurrent transitions on one row impo
 to both succeed silently. `PROCESSING` and `NEEDS_RECONCILIATION` are internal transit
 states - the merchant only ever hears about the terminal ones, via a signed webhook.
 
-```mermaid
-stateDiagram-v2
-    [*] --> CREATED
-    CREATED --> PROCESSING: worker picks it up
-    CREATED --> FAILED: queue full
-    PROCESSING --> AUTHORIZED: acquirer approves
-    PROCESSING --> DECLINED: acquirer declines
-    PROCESSING --> FAILED: permanent 4xx error
-    PROCESSING --> NEEDS_RECONCILIATION: timeout, 5xx or breaker open
-    NEEDS_RECONCILIATION --> AUTHORIZED: acquirer confirms approved
-    NEEDS_RECONCILIATION --> DECLINED: acquirer confirms declined
-    NEEDS_RECONCILIATION --> FAILED: never charged or retries exhausted
-    AUTHORIZED --> CAPTURED: capture
-    AUTHORIZED --> CANCELED: cancel
-    CAPTURED --> PARTIALLY_REFUNDED: partial refund
-    CAPTURED --> REFUNDED: full refund
-    PARTIALLY_REFUNDED --> REFUNDED: last refund reaches the captured amount
-    DECLINED --> [*]
-    CANCELED --> [*]
-    REFUNDED --> [*]
-    FAILED --> [*]
-```
+![Payment state machine](docs/payment-state-machine.svg)
+
+<sub>Source: [`docs/payment-state-machine.mmd`](docs/payment-state-machine.mmd) - regenerate the
+SVG with `npx @mermaid-js/mermaid-cli -i docs/payment-state-machine.mmd -o docs/payment-state-machine.svg -b white`.</sub>
 
 Refunds are additive: as many partial refunds as fit under the captured amount, so a
 payment can sit in `PARTIALLY_REFUNDED` across several of them. A payment abandoned in
