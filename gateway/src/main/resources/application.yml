@@ -59,7 +59,10 @@ spring:
 
 payflow:
   acquirer:
-    base-url: ${ACQUIRER_BASE_URL:http://localhost:9090}
+    # localhost:8090 - типовий хост-порт mock-acquirer-а з docker-compose (9090
+    # свідомо не займаємо, він конфліктний на спільних машинах). У самому Compose
+    # gateway ходить до нього через мережу як http://mock-acquirer:9090.
+    base-url: ${ACQUIRER_BASE_URL:http://localhost:8090}
     circuit-breaker:
       # Скільки транспортних невдач ПОСПІЛЬ (таймаут / розрив / 5xx) розмикають
       # ланцюг. Успішна відповідь у стані CLOSED скидає лічильник - разові збої

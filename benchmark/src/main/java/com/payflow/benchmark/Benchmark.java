@@ -8,6 +8,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -271,7 +272,7 @@ public final class Benchmark {
 
     private static String row(String label, LevelResult r) {
         Percentiles p = r.latencyMillis();
-        return String.format("| %s | %d | %d | %.1f | %d | %d | %d | %d | %d | %d | %d |",
+        return String.format(Locale.ROOT, "| %s | %d | %d | %.1f | %d | %d | %d | %d | %d | %d | %d |",
                 label, r.concurrency(), r.completed(), r.throughputPerSecond(),
                 p.p(50), p.p(90), p.p(99), p.max(),
                 r.httpErrors(), r.connErrors(), r.timeouts());

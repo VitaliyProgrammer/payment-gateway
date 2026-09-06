@@ -26,8 +26,24 @@
     <modules>
         <module>gateway</module>
         <module>mock-acquirer</module>
-        <module>benchmark</module>
     </modules>
+
+    <profiles>
+        <!--
+            benchmark - це лише навантажувальний інструмент розробника (стадія 7),
+            а не частина продукту. Тримаємо його за профілем, щоб reactor у
+            docker-складанні образів лишався з двох модулів (Dockerfile-и копіюють
+            саме gateway/pom.xml і mock-acquirer/pom.xml). CI вмикає профіль явно:
+            ./mvnw -B -Pbenchmark verify. Запуск самого бенчмарку - через
+            ops/benchmark/run-benchmark.sh.
+        -->
+        <profile>
+            <id>benchmark</id>
+            <modules>
+                <module>benchmark</module>
+            </modules>
+        </profile>
+    </profiles>
 
     <properties>
         <!--
