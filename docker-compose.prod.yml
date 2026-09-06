@@ -1,0 +1,86 @@
+# Run the stack from pre-built images - no local build, no JDK, ~30 s to ready.
+#
+#   docker compose -f docker-compose.prod.yml up
+#
+# The images are published to GHCR by .github/workflows/publish-images.yml on
+# every push to main. IMAGE_BASE defaults to the author's namespace; if you
+# forked, put your own in .env:
+#
+#   IMAGE_BASE=ghcr.io/<your-github-user>/payment-gateway
+#
+# Host ports and the monitoring profile behave exactly as in docker-compose.yml.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payflow
+      POSTGRES_USER: payflow
+      POSTGRES_PASSWORD: payflow
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - payflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payflow -d payflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-acquirer:
+    image: ${IMAGE_BASE:-ghcr.io/vitaliyprogrammer/payment-gateway}/mock-acquirer:latest
+    pull_policy: always
+    ports:
+      - "${ACQUIRER_PORT:-8090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    image: ${IMAGE_BASE:-ghcr.io/vitaliyprogrammer/payment-gateway}/gateway:latest
+    pull_policy: always
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/payflow
+      DB_USER: payflow
+      DB_PASSWORD: payflow
+      ACQUIRER_BASE_URL: http://mock-acquirer:9090
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-acquirer:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["monitoring"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=6h"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9091}:9090"
+    depends_on:
+      - gateway
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  payflow-postgres-data:
