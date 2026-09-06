@@ -1,6 +1,7 @@
 package com.payflow.gateway.repository;
 
 import com.payflow.gateway.entity.OutboxEvent;
+import com.payflow.gateway.entity.status.OutboxEventStatus;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,6 +9,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> {
+
+    /**
+     * Джерело для gauge-ів {@code payflow.outbox.pending} і
+     * {@code payflow.outbox.dead_letter} (стадія 7).
+     */
+    long countByStatus(OutboxEventStatus status);
 
     /**
      * "distinct on (payment_id)" у підзапиті гарантує впорядковану per-платіж

@@ -18,6 +18,7 @@ import com.payflow.gateway.support.PostgresIntegrationTest;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -118,7 +119,7 @@ class PaymentLifecycleTest extends PostgresIntegrationTest {
 
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
-        List<ResponseEntity<String>> responses = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<ResponseEntity<String>> responses = new CopyOnWriteArrayList<>();
 
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             executor.submit(() -> {

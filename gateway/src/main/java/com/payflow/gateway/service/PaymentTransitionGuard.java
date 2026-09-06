@@ -4,6 +4,7 @@ import com.payflow.gateway.entity.Payment;
 import com.payflow.gateway.entity.status.PaymentEventType;
 import com.payflow.gateway.entity.status.PaymentStatus;
 import com.payflow.gateway.exception.PaymentNotFoundException;
+import com.payflow.gateway.metrics.PaymentMetrics;
 import com.payflow.gateway.outbox.OutboxEventRecorder;
 import com.payflow.gateway.repository.PaymentRepository;
 import java.util.UUID;
@@ -32,10 +33,13 @@ public class PaymentTransitionGuard {
 
     private final PaymentRepository paymentRepository;
     private final OutboxEventRecorder outboxEventRecorder;
+    private final PaymentMetrics metrics;
 
-    public PaymentTransitionGuard(PaymentRepository paymentRepository, OutboxEventRecorder outboxEventRecorder) {
+    public PaymentTransitionGuard(PaymentRepository paymentRepository, OutboxEventRecorder outboxEventRecorder,
+            PaymentMetrics metrics) {
         this.paymentRepository = paymentRepository;
         this.outboxEventRecorder = outboxEventRecorder;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -43,7 +47,7 @@ public class PaymentTransitionGuard {
         Payment payment = findOwnedPayment(paymentId, merchantId);
         payment.capture();
         outboxEventRecorder.record(payment, PaymentEventType.PAYMENT_CAPTURED);
-        return paymentRepository.saveAndFlush(payment);
+        return recordTransition(paymentRepository.saveAndFlush(payment));
     }
 
     @Transactional
@@ -51,7 +55,7 @@ public class PaymentTransitionGuard {
         Payment payment = findOwnedPayment(paymentId, merchantId);
         payment.cancel();
         outboxEventRecorder.record(payment, PaymentEventType.PAYMENT_CANCELED);
-        return paymentRepository.saveAndFlush(payment);
+        return recordTransition(paymentRepository.saveAndFlush(payment));
     }
 
     @Transactional
@@ -64,7 +68,16 @@ public class PaymentTransitionGuard {
                 : PaymentEventType.PAYMENT_PARTIALLY_REFUNDED;
         outboxEventRecorder.record(payment, eventType);
 
-        return paymentRepository.saveAndFlush(payment);
+        return recordTransition(paymentRepository.saveAndFlush(payment));
+    }
+
+    /**
+     * Метрику переходу пишемо лише після успішного saveAndFlush - той, хто
+     * програв гонку за @Version, кине виняток вище і сюди не дійде.
+     */
+    private Payment recordTransition(Payment saved) {
+        metrics.transitioned(saved.getStatus());
+        return saved;
     }
 
     private Payment findOwnedPayment(UUID paymentId, UUID merchantId) {

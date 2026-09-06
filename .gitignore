@@ -16,3 +16,7 @@ replay_pid*.log
 
 .env
 .env.local
+
+# Stage 7 benchmark outputs (the table itself is hand-copied into the README in Stage 8)
+ops/benchmark/results*.md
+ops/benchmark/gateway-*.log

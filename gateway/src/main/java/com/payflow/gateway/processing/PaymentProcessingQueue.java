@@ -1,5 +1,6 @@
 package com.payflow.gateway.processing;
 
+import com.payflow.gateway.metrics.PaymentMetrics;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -16,16 +17,30 @@ import org.springframework.stereotype.Component;
 public class PaymentProcessingQueue {
 
     private final BlockingQueue<UUID> queue;
+    private final PaymentMetrics metrics;
 
-    public PaymentProcessingQueue(@Value("${payflow.processing.queue-capacity:500}") int capacity) {
+    public PaymentProcessingQueue(@Value("${payflow.processing.queue-capacity:500}") int capacity,
+            PaymentMetrics metrics) {
         this.queue = new ArrayBlockingQueue<>(capacity);
+        this.metrics = metrics;
     }
 
     public boolean tryEnqueue(UUID paymentId) {
-        return queue.offer(paymentId);
+        boolean accepted = queue.offer(paymentId);
+        metrics.queueEnqueue(accepted);
+        return accepted;
     }
 
     public UUID take() throws InterruptedException {
         return queue.take();
+    }
+
+    /**
+     * Поточна глибина черги - джерело для gauge-метрики
+     * {@code payflow.processing.queue.depth} (стадія 7). Дешева O(1)-операція на
+     * ArrayBlockingQueue.
+     */
+    public int size() {
+        return queue.size();
     }
 }

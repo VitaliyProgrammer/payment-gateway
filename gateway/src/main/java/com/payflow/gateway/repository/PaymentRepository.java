@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.entity.status.PaymentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +19,9 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
      * а не окремою перевіркою, яку виклик міг би просто забути зробити.
      */
     Optional<Payment> findByIdAndMerchantId(UUID id, UUID merchantId);
+
+    /** Джерело для gauge {@code payflow.reconciliation.pending} (стадія 7). */
+    long countByStatus(PaymentStatus status);
 
     /**
      * Пакет платежів для примирення (стадія 6). Дві категорії, один запит:

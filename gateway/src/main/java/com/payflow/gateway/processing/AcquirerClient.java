@@ -1,9 +1,11 @@
 package com.payflow.gateway.processing;
 
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.payflow.gateway.exception.AcquirerUnavailableException;
+import com.payflow.gateway.metrics.PaymentMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,7 +26,9 @@ import org.springframework.web.client.ResourceAccessException;
  * </ul>
  *
  * Кожен виклик проходить через {@link AcquirerCircuitBreaker}: транспортні
- * невдачі його "заряджають", clean-відповіді - скидають.
+ * невдачі його "заряджають", clean-відповіді - скидають. Кожен виклик також
+ * пишеться в таймер {@code payflow.acquirer.calls} з тегом підсумку (стадія 7) -
+ * запис у {@code finally}, тож він не змінює жодної гілки поведінки.
  */
 @Component
 public class AcquirerClient {
@@ -33,28 +37,43 @@ public class AcquirerClient {
 
     private final RestClient restClient;
     private final AcquirerCircuitBreaker circuitBreaker;
+    private final PaymentMetrics metrics;
 
-    public AcquirerClient(RestClient acquirerRestClient, AcquirerCircuitBreaker circuitBreaker) {
+    public AcquirerClient(RestClient acquirerRestClient, AcquirerCircuitBreaker circuitBreaker,
+            PaymentMetrics metrics) {
         this.restClient = acquirerRestClient;
         this.circuitBreaker = circuitBreaker;
+        this.metrics = metrics;
     }
 
     public AcquirerOutcome authorize(UUID paymentId, long amount, String currency) {
-        circuitBreaker.acquirePermission();
+        long start = System.nanoTime();
+        String outcome = "error";
         try {
+            circuitBreaker.acquirePermission();
             AcquirerChargeResponse response = restClient.post()
                     .uri("/charges")
                     .body(new AcquirerChargeRequest(paymentId.toString(), amount, currency))
                     .retrieve()
                     .body(AcquirerChargeResponse.class);
             circuitBreaker.recordSuccess();
+            outcome = response.outcome().name().toLowerCase(Locale.ROOT);
             return response.outcome();
+        } catch (AcquirerUnavailableException circuitOpen) {
+            // acquirePermission() відхилив виклик - HTTP-запиту не було взагалі.
+            outcome = "circuit_open";
+            throw circuitOpen;
         } catch (RestClientResponseException exception) {
-            throw classifyResponseError("authorize", paymentId, exception);
+            RuntimeException translated = classifyResponseError("authorize", paymentId, exception);
+            outcome = translated instanceof AcquirerUnavailableException ? "unavailable" : "rejected";
+            throw translated;
         } catch (ResourceAccessException exception) {
             circuitBreaker.recordFailure();
+            outcome = "unavailable";
             throw new AcquirerUnavailableException(
                     "Acquirer transport failure on authorize for payment " + paymentId, exception);
+        } finally {
+            metrics.acquirerCall("authorize", outcome, System.nanoTime() - start);
         }
     }
 
@@ -70,24 +89,36 @@ public class AcquirerClient {
      * підсумок досі невідомий, спробуємо пізніше.
      */
     public Optional<AcquirerOutcome> getCharge(UUID paymentId) {
-        circuitBreaker.acquirePermission();
+        long start = System.nanoTime();
+        String outcome = "error";
         try {
+            circuitBreaker.acquirePermission();
             AcquirerChargeResponse response = restClient.get()
                     .uri("/charges/{reference}", paymentId.toString())
                     .retrieve()
                     .body(AcquirerChargeResponse.class);
             circuitBreaker.recordSuccess();
+            outcome = response.outcome().name().toLowerCase(Locale.ROOT);
             return Optional.of(response.outcome());
+        } catch (AcquirerUnavailableException circuitOpen) {
+            outcome = "circuit_open";
+            throw circuitOpen;
         } catch (RestClientResponseException exception) {
             if (exception.getStatusCode().value() == 404) {
                 circuitBreaker.recordSuccess();
+                outcome = "not_found";
                 return Optional.empty();
             }
-            throw classifyResponseError("getCharge", paymentId, exception);
+            RuntimeException translated = classifyResponseError("getCharge", paymentId, exception);
+            outcome = translated instanceof AcquirerUnavailableException ? "unavailable" : "rejected";
+            throw translated;
         } catch (ResourceAccessException exception) {
             circuitBreaker.recordFailure();
+            outcome = "unavailable";
             throw new AcquirerUnavailableException(
                     "Acquirer transport failure on getCharge for payment " + paymentId, exception);
+        } finally {
+            metrics.acquirerCall("get_charge", outcome, System.nanoTime() - start);
         }
     }
 

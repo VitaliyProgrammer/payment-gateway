@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -105,7 +106,7 @@ class OutboxWebhookTest extends PostgresIntegrationTest {
 
         List<RecordedWebhookRequest> lastTwo = webhookServer.awaitCount(2, Duration.ofSeconds(5));
 
-        List<String> eventTypes = java.util.stream.Stream.concat(firstTwo.stream(), lastTwo.stream())
+        List<String> eventTypes = Stream.concat(firstTwo.stream(), lastTwo.stream())
                 .map(RecordedWebhookRequest::eventType)
                 .toList();
 

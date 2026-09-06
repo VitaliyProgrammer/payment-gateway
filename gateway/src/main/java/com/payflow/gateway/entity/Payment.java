@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.UUID;
 
 /**
@@ -221,7 +222,7 @@ public class Payment {
             }
         }
         throw new InvalidPaymentStateException(
-                "Payment " + id + " is in status " + status + ", expected one of " + java.util.Arrays.toString(allowed));
+                "Payment " + id + " is in status " + status + ", expected one of " + Arrays.toString(allowed));
     }
 
     private void touch() {

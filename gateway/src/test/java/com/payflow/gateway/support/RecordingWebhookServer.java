@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -59,7 +60,7 @@ public class RecordingWebhookServer implements AutoCloseable {
 
     public RecordedWebhookRequest awaitNext(Duration timeout) {
         try {
-            RecordedWebhookRequest request = received.poll(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            RecordedWebhookRequest request = received.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (request == null) {
                 throw new AssertionError("No webhook request received within " + timeout);
             }

@@ -128,6 +128,24 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+  simple:
+    metrics:
+      export:
+        # Prometheus - єдиний реєстр (див. metrics/PrometheusEndpointConfig).
+        # Без цього Boot додає ще й SimpleMeterRegistry як fallback, і кастомні
+        # метрики з PaymentMetrics потрапляли б у нього, а не в scrape.
+        enabled: false
+  metrics:
+    tags:
+      # Спільний label для всіх серій цього інстансу - Prometheus теж додає свій
+      # job/service, але application тег корисний, коли метрики летять деінде.
+      application: ${spring.application.name}
+    distribution:
+      # Без цього http.server.requests не публікує _bucket-серій, і панелі
+      # p50/p95/p99 у Grafana-дашборді були б порожні. Таймер payflow.acquirer.calls
+      # вмикає гістограму сам, у коді (publishPercentileHistogram()).
+      percentiles-histogram:
+        http.server.requests: true
 
 logging:
   level:
