@@ -3,8 +3,14 @@ package com.payflow.gateway.api;
 import static com.payflow.gateway.support.TestMerchants.DEMO_API_KEY;
 import static com.payflow.gateway.support.TestMerchants.DEMO_MERCHANT_ID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.processing.AcquirerClient;
+import com.payflow.gateway.processing.AcquirerOutcome;
 import com.payflow.gateway.repository.PaymentRepository;
 import com.payflow.gateway.entity.status.PaymentStatus;
 import com.payflow.gateway.support.PaymentTestClient;
@@ -17,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 class PaymentApiTest extends PostgresIntegrationTest {
 
@@ -26,11 +33,24 @@ class PaymentApiTest extends PostgresIntegrationTest {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    /**
+     * Ці тести - про HTTP-поверхню API (автентифікація, валідація, читання
+     * назад), а не про обробку. Мок прибирає фонову роботу: без нього кожен
+     * створений тут платіж б'ється в непіднятий mock-acquirer, дістає таймаут і
+     * осідає в NEEDS_RECONCILIATION, звідки sweeper - уже в контексті
+     * НАСТУПНОГО тестового класу - зрештою робить його FAILED і породжує
+     * payment.failed подію, яка тече у вебхук-тести. Той самий підхід, що і в
+     * PaymentProcessingTest.
+     */
+    @MockitoBean
+    private AcquirerClient acquirerClient;
+
     private PaymentTestClient client;
 
     @BeforeEach
     void setUp() {
         client = new PaymentTestClient(restTemplate);
+        when(acquirerClient.authorize(any(), anyLong(), anyString())).thenReturn(AcquirerOutcome.APPROVED);
     }
 
     @Test

@@ -60,6 +60,32 @@ spring:
 payflow:
   acquirer:
     base-url: ${ACQUIRER_BASE_URL:http://localhost:9090}
+    circuit-breaker:
+      # Скільки транспортних невдач ПОСПІЛЬ (таймаут / розрив / 5xx) розмикають
+      # ланцюг. Успішна відповідь у стані CLOSED скидає лічильник - разові збої
+      # ланцюг не чіпають, лише стійка недоступність.
+      failure-threshold: ${ACQUIRER_CB_FAILURE_THRESHOLD:5}
+      # Скільки ланцюг лишається розімкненим, перш ніж пропустити одну пробну
+      # спробу. Поки розімкнено, кожен платіж одразу йде в NEEDS_RECONCILIATION
+      # без марного очікування таймауту.
+      open-duration-ms: ${ACQUIRER_CB_OPEN_DURATION_MS:10000}
+  reconciliation:
+    poll-interval-ms: ${RECONCILIATION_POLL_INTERVAL_MS:1000}
+    # Платіж у PROCESSING, не оновлений довше за цей час, вважається "залишеним"
+    # (воркер чи інстанс помер посеред виклику) і підбирається sweeper-ом.
+    # Помітно більший за найдовший реалістичний виклик до еквайра (таймаут
+    # читання - 5с), щоб не чіпати платежі, які просто зараз обробляються.
+    stale-processing-after-ms: ${RECONCILIATION_STALE_PROCESSING_AFTER_MS:60000}
+    # "Оренда" на час активної спроби примирення - див. коментар до
+    # reconcile_next_at у міграції V7.
+    claim-lease-ms: ${RECONCILIATION_CLAIM_LEASE_MS:30000}
+    base-backoff-ms: ${RECONCILIATION_BASE_BACKOFF_MS:1000}
+    max-backoff-ms: ${RECONCILIATION_MAX_BACKOFF_MS:30000}
+    # Після стількох безуспішних спроб дізнатись підсумок у еквайра платіж
+    # чесно позначається FAILED з гучним логом, а не залишається висіти вічно.
+    max-attempts: ${RECONCILIATION_MAX_ATTEMPTS:10}
+    batch-size: ${RECONCILIATION_BATCH_SIZE:20}
+    reconciler-count: ${RECONCILIATION_RECONCILER_COUNT:1}
   processing:
     # Обмежена черга в пам'яті - навмисно менша за maximum-pool-size, щоб
     # переповнення черги траплялось раніше, ніж вичерпання пулу з'єднань:

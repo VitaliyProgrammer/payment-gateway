@@ -3,6 +3,7 @@ package com.payflow.gateway.api;
 import static com.payflow.gateway.support.TestMerchants.DEMO_API_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.payflow.gateway.processing.AcquirerClient;
 import com.payflow.gateway.support.PaymentTestClient;
 import com.payflow.gateway.support.PostgresIntegrationTest;
 import java.util.HashSet;
@@ -19,11 +20,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 class PaymentIdempotencyTest extends PostgresIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
+
+    /**
+     * Підмінений моком (як у PaymentProcessingTest) з єдиною метою - прибрати
+     * фонову роботу з-під цього тесту на конкурентність. Без мока кожен з
+     * платежів-переможців б'ється в реальний, непіднятий тут mock-acquirer,
+     * отримує таймаут і йде в NEEDS_RECONCILIATION, після чого sweeper починає
+     * періодично брати FOR UPDATE SKIP LOCKED транзакції рівно тоді, коли 200
+     * запитів і так б'ються за 30 з'єднань пулу - і кілька з них через це
+     * дістають connection reset замість чесного 503. Сам контракт
+     * ідемпотентності до еквайра стосунку не має.
+     */
+    @MockitoBean
+    private AcquirerClient acquirerClient;
 
     private PaymentTestClient client;
 

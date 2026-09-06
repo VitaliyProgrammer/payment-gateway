@@ -71,10 +71,46 @@ Each stage leaves the application in a runnable state. Checked stages are done.
       intermittent, hard-to-reproduce failure. Fixed with `@DirtiesContext` on the shared
       test base class, so every test class's background workers are guaranteed stopped
       before the next class starts - slower suite, but no cross-test interference.
-- [ ] **Stage 6 - Reconciliation and resilience.** Sweeper for payments stuck in
-      `PROCESSING`; circuit breaker on the acquirer.
-      **Proves:** a request that times out against the acquirer is never charged twice
-      on retry.
+- [x] **Stage 6 - Reconciliation and resilience.** The worker used to collapse *every*
+      acquirer failure to `FAILED`. That is a lie for a read timeout or a `5xx`: the
+      charge was sent, we simply never saw the answer. Marking `FAILED` there loses a
+      real authorization; blindly retrying `authorize` risks charging twice. Stage 6
+      splits "known not to have happened" from "outcome unknown". Unknown outcomes go to
+      `NEEDS_RECONCILIATION` (the status and its check-constraint slot were reserved back
+      in stages 0-1), and a `FOR UPDATE SKIP LOCKED` sweeper resolves them by *asking*
+      the acquirer (`GET /charges/{id}`) rather than re-charging - which is only safe
+      because `mock-acquirer` is now idempotent (`computeIfAbsent` per `reference`,
+      first call decides the outcome, every repeat replays it) and queryable. The same
+      sweeper also picks up payments left in `PROCESSING` past a staleness threshold - a
+      worker or whole instance that died mid-call - and runs them through the identical
+      path. Claim is a short transaction with a lease (`reconcile_next_at` pushed into
+      the future); the HTTP call happens outside it, the same split as `OutboxClaimService`.
+      A `404` from the acquirer means it never saw the charge, so `FAILED` is then honest
+      and final; a still-unreachable acquirer gets exponential backoff and, after a bounded
+      number of attempts, `FAILED` with a loud log. The circuit breaker
+      (`AcquirerCircuitBreaker`, hand-rolled in the same style as the other resilience
+      primitives here - `ReentrantLock`, `CLOSED`/`OPEN`/`HALF_OPEN`, only transport
+      failures trip it) short-circuits `authorize` while the acquirer is down, so a payment
+      is parked in `NEEDS_RECONCILIATION` immediately instead of after a wasted 5s timeout.
+      **Proves:** a payment whose `authorize` call times out is still driven to its true
+      terminal status (`AUTHORIZED`/`DECLINED`) by querying the acquirer - and `authorize`
+      is invoked exactly once, verified by asserting the charge-call count stays at 1
+      while the payment still reaches `AUTHORIZED`. A `404` from the acquirer ends the
+      payment as `FAILED`; a payment abandoned in `PROCESSING` with no queue entry and no
+      live worker is picked up by the sweeper and finished; the breaker opens after N
+      consecutive transport failures and closes again after one successful probe. Found
+      and fixed during this stage: routing transport failures to `NEEDS_RECONCILIATION`
+      (instead of the old silent `markFailed`) gave the sweeper real background work in
+      every test that talks to the real, un-started `mock-acquirer`. Its
+      `FOR UPDATE SKIP LOCKED` poll then competed for the connection pool with the
+      200-concurrent idempotency stress test (a few requests got a connection reset
+      instead of an honest `503`), and - worse - a payment left in `NEEDS_RECONCILIATION`
+      by one test class was marked `FAILED` by the *next* class's sweeper, emitting a
+      `payment.failed` webhook into a test that only expected authorize/capture/refund
+      events. Fixed by mocking `AcquirerClient` in the API-surface tests that never cared
+      about processing (`PaymentApiTest`, `PaymentIdempotencyTest`), the same approach
+      `PaymentProcessingTest` already took - so no test generates reconciliation traffic
+      it does not assert on.
 - [ ] **Stage 7 - Observability and benchmark.** Micrometer metrics, Grafana dashboard
       in Compose, a load test comparing platform-thread and virtual-thread throughput
       under the same concurrent load.

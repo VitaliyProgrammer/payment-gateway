@@ -1,6 +1,7 @@
 package com.payflow.gateway.processing;
 
 import com.payflow.gateway.entity.Payment;
+import com.payflow.gateway.exception.AcquirerUnavailableException;
 import com.payflow.gateway.repository.PaymentRepository;
 import com.payflow.gateway.service.PaymentProcessingService;
 import java.util.Optional;
@@ -73,12 +74,20 @@ public class PaymentProcessingWorker implements Runnable {
             } else {
                 processingService.markDeclined(paymentId);
             }
+        } catch (AcquirerUnavailableException exception) {
+            // Таймаут читання / 5xx / розімкнений circuit breaker: запит до
+            // еквайра пішов (або міг піти), але підсумок НЕВІДОМИЙ. Позначити
+            // FAILED тут - це або втратити реальну авторизацію, або спонукати
+            // мерчанта до повторного платежу за вже заблоковані кошти. Замість
+            // цього - NEEDS_RECONCILIATION: sweeper (див. пакет reconciliation)
+            // пізніше ЗАПИТАЄ еквайра, чим усе скінчилось, а не зарядить повторно.
+            log.warn("Acquirer outcome unknown for payment {} ({}), moving to NEEDS_RECONCILIATION",
+                    paymentId, exception.getMessage());
+            processingService.markNeedsReconciliation(paymentId);
         } catch (RuntimeException exception) {
-            // Еквайр не відповів, впав, чи таймаутнув - деталі, чому це FAILED,
-            // а не автоматичний ретрай, розкриються на стадії 6 (примирення й
-            // circuit breaker). Тут головне - не дати платежу застрягти в
-            // PROCESSING мовчки і не впустити виняток, який вбив би цей потік
-            // воркера назавжди.
+            // 4xx чи будь-яка інша несподівана помилка: ретрай не допоможе.
+            // Головне - не дати платежу застрягти в PROCESSING мовчки і не
+            // впустити виняток, який вбив би цей потік воркера назавжди.
             log.warn("Acquirer call failed for payment {}: {}", paymentId, exception.getMessage());
             processingService.markFailed(paymentId);
         }
