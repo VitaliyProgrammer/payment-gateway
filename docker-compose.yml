@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: payflow
       POSTGRES_PASSWORD: payflow
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - payflow-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +19,11 @@ services:
     build:
       context: .
       dockerfile: mock-acquirer/Dockerfile
+    # Host port 8090, not 9090: 9090 is a common default (other Spring/monitoring
+    # stacks grab it) and clashes on shared dev machines. Container port stays
+    # 9090 - the gateway reaches it over the compose network, no host port needed.
     ports:
-      - "9090:9090"
+      - "${ACQUIRER_PORT:-8090}:9090"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/actuator/health"]
       interval: 5s
@@ -37,7 +40,7 @@ services:
       DB_PASSWORD: payflow
       ACQUIRER_BASE_URL: http://mock-acquirer:9090
     ports:
-      - "8080:8080"
+      - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,8 +58,7 @@ services:
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      # 9090 на хості вже зайнятий mock-acquirer-ом.
-      - "9091:9090"
+      - "${PROMETHEUS_PORT:-9091}:9090"
     depends_on:
       - gateway
 
@@ -73,7 +75,7 @@ services:
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     depends_on:
       - prometheus
 

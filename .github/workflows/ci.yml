@@ -20,5 +20,7 @@ jobs:
           cache: maven
 
       # Testcontainers needs a real Docker daemon; ubuntu-latest runners ship one.
+      # -Pbenchmark also builds/tests the load-generator module (its percentile
+      # maths); the load run itself is not in CI.
       - name: Build and test
-        run: ./mvnw -B verify
+        run: ./mvnw -B -Pbenchmark verify

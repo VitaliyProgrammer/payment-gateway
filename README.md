@@ -61,8 +61,57 @@ vehicle for demonstrating things that are easy to *claim* and hard to *fake*:
   layer cheap to scale, but the connection pool stays bounded on purpose: under load the
   queue should move to the database's front door, not disappear.
 
-See `ROADMAP.md` for the staged build-out and the specific concurrency scenarios each
-stage proves with a test.
+### What the tests prove
+
+Every row is a Testcontainers test against a real Postgres, run in CI. See `ROADMAP.md`
+for the full scenario behind each.
+
+| Concern | Proven by | Stage |
+|---|---|---|
+| Idempotency under a real race | 200 concurrent same-key requests create **exactly one** payment | 2 |
+| Honest overload | a saturated connection pool answers `503`/`409` with `Retry-After`, never a misleading `401`/`500` | 2 |
+| Async backpressure | a full processing queue answers `503`, it never blocks the request thread | 3 |
+| Guarded state machine | concurrent `capture` and `cancel` on one payment: exactly one wins, the other gets `409` | 4 |
+| Sum invariant | 10 concurrent partial refunds of 20 against a 100 capture succeed exactly 5 times, the total never exceeds the capture | 4 |
+| Ordered delivery | webhooks for one payment arrive in order even when an earlier one is mid-retry | 5 |
+| Dead-lettering | a webhook that fails every attempt lands in `DEAD_LETTER`, not stuck `PENDING` forever | 5 |
+| No double charge | a timed-out acquirer call is resolved by *asking* the acquirer, not re-charging - the charge is sent exactly once | 6 |
+
+***
+
+## 🔀 Payment state machine
+
+Transitions are named methods on `Payment` that check the source state and throw
+otherwise; the `version` column makes two concurrent transitions on one row impossible
+to both succeed silently. `PROCESSING` and `NEEDS_RECONCILIATION` are internal transit
+states - the merchant only ever hears about the terminal ones, via a signed webhook.
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED: POST /v1/payments
+    CREATED --> PROCESSING: worker picks it up
+    CREATED --> FAILED: queue full (compensating)
+    PROCESSING --> AUTHORIZED: acquirer approves
+    PROCESSING --> DECLINED: acquirer declines
+    PROCESSING --> FAILED: permanent error (4xx)
+    PROCESSING --> NEEDS_RECONCILIATION: timeout / 5xx / breaker open
+    NEEDS_RECONCILIATION --> AUTHORIZED: sweeper asks, acquirer approved
+    NEEDS_RECONCILIATION --> DECLINED: sweeper asks, acquirer declined
+    NEEDS_RECONCILIATION --> FAILED: acquirer never saw it / retries exhausted
+    AUTHORIZED --> CAPTURED: POST .../capture
+    AUTHORIZED --> CANCELED: POST .../cancel
+    CAPTURED --> PARTIALLY_REFUNDED: partial refund
+    CAPTURED --> REFUNDED: full refund
+    PARTIALLY_REFUNDED --> PARTIALLY_REFUNDED: another partial refund
+    PARTIALLY_REFUNDED --> REFUNDED: refunds reach the captured amount
+    DECLINED --> [*]
+    CANCELED --> [*]
+    REFUNDED --> [*]
+    FAILED --> [*]
+```
+
+A payment abandoned in `PROCESSING` (the worker or the whole instance died mid-call) is
+picked up by the same reconciliation sweeper once it is older than a staleness threshold.
 
 ***
 
@@ -72,12 +121,22 @@ stage proves with a test.
 docker compose up --build
 ```
 
+That brings up Postgres, the mock acquirer and the gateway on `localhost:8080`. The demo
+merchant (`demo-merchant-api-key`, seeded by the migrations) is ready immediately:
+
 ```bash
 curl -X POST localhost:8080/v1/payments \
-  -H "Authorization: Bearer <merchant-api-key>" \
-  -H "Idempotency-Key: <uuid>" \
+  -H "Authorization: Bearer demo-merchant-api-key" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{"amount": 5000, "currency": "UAH"}'
 ```
+
+`ops/demo.sh` walks the whole lifecycle against that stack - create, poll to a terminal
+status, capture, partial refund, and a repeated idempotency key returning the same id.
+
+Host ports: gateway `8080`, Postgres `5432`, mock acquirer `8090` (**not** `9090` - it
+clashes too often on shared machines), Prometheus `9091`, Grafana `3000`. Override any of
+them with a `.env` file - see `.env.example`.
 
 **Locally, without Docker for the app itself:**
 
@@ -87,7 +146,7 @@ curl -X POST localhost:8080/v1/payments \
 
 (Postgres and the mock acquirer still need to be reachable - either via
 `docker compose up postgres mock-acquirer`, or point `DB_URL` / `ACQUIRER_BASE_URL` at
-your own instances.)
+your own instances. The default `ACQUIRER_BASE_URL` already targets `localhost:8090`.)
 
 ***
 
@@ -105,18 +164,38 @@ Hikari pool, outbox backlog and reconciliation lag - alongside the raw metrics a
 
 ***
 
-## 🏁 Benchmark
+## 🏁 Benchmark: platform vs virtual threads
 
 ```bash
 ops/benchmark/run-benchmark.sh
 ```
 
-Runs the same closed-loop load (create a payment, poll until it reaches a terminal
-status, repeat) against the gateway twice - once with platform threads on Tomcat, once
-with virtual threads - and prints the two Markdown tables. The load generator
-(`benchmark` module) is plain `java.net.http` on virtual threads, no external tooling.
-Needs a local JDK 21 and Docker. The concurrency section with the results table is
-added in stage 8.
+The `benchmark` module is a dependency-free load generator (`java.net.http` on virtual
+threads, hand-rolled nearest-rank percentiles). It runs a **closed-loop** workload -
+each simulated client creates a payment, polls until it reaches a terminal status, then
+immediately starts another - against the gateway twice: once with
+`spring.threads.virtual.enabled=false` (Tomcat's default 200-thread pool), once with it
+`true`. The processing-worker pool is raised for the run so the acquirer drain rate is
+not the ceiling; the acquirer adds 50-300&nbsp;ms of simulated latency per authorize.
+
+Numbers are machine-specific and the high-concurrency rows are only meaningful on a
+machine that is not itself memory-starved, so the table here is left for you to fill
+from your own run - the script writes the combined result to `ops/benchmark/results.md`.
+Defaults are `LEVELS=50,200,500,1000`, 20&nbsp;s measured per level.
+
+<!-- BENCHMARK_TABLE_START -->
+| profile | conc | completed | thr/s | p50 ms | p90 ms | p99 ms | max ms | http-err | conn-err | timeout |
+|--------:|-----:|----------:|------:|-------:|-------:|-------:|-------:|---------:|---------:|--------:|
+| _run `ops/benchmark/run-benchmark.sh`_ | | | | | | | | | | |
+<!-- BENCHMARK_TABLE_END -->
+
+**What to look for.** The connection pool is the deliberate bottleneck (see *Concurrency
+notes*), so peak *throughput* converges between the two thread models - the DB serves the
+same number of payments either way. The difference is in the tail under overload: with
+platform threads, once all 200 Tomcat threads are parked waiting on the pool, further
+connections are refused outright (`conn-err` climbs) and accepted requests hit a latency
+cliff. With virtual threads every request is accepted and either completes or gets an
+honest `503`, so `p99` grows smoothly and `conn-err` stays near zero.
 
 ***
 

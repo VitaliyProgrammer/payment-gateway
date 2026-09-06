@@ -128,14 +128,30 @@ Each stage leaves the application in a runnable state. Checked stages are done.
       nearest-rank percentiles. `ops/benchmark/run-benchmark.sh` runs the identical load
       against the gateway twice - `spring.threads.virtual.enabled` false then true, with
       the processing-worker pool raised so the acquirer drain rate is not the ceiling -
-      and prints both Markdown tables. It is deliberately not wired into CI.
+      and prints both Markdown tables. The module lives behind a `benchmark` Maven
+      profile so the product image builds stay two-module; CI builds and unit-tests it
+      (`-Pbenchmark`) but never runs the load itself.
       **Proves:** every domain metric named above is present on `/actuator/prometheus`
       after a payment is processed; `PaymentMetrics` maps each event to the expected
       meter name and tags (`SimpleMeterRegistry` unit test); the acquirer timer is
       actually recorded from inside `AcquirerClient`, tagged with the call's outcome. The
       platform-vs-virtual comparison table itself lands in the README in stage 8.
-- [ ] **Stage 8 - README and demo.** Concurrency section with the benchmark table,
-      state-machine diagram, one-command `docker compose up` demo.
+- [x] **Stage 8 - README and demo.** The README gets a *What the tests prove* table
+      (one row per concurrency guarantee, linking back to the stage that proves it), a
+      Mermaid state-machine diagram of `Payment` (every transition is a guarded named
+      method; `PROCESSING`/`NEEDS_RECONCILIATION` are internal, the merchant only hears
+      terminal states via a signed webhook), and a platform-vs-virtual benchmark
+      section - `ops/benchmark/run-benchmark.sh` verified end to end, its table left to
+      be filled from a run on an unconstrained machine. `ops/demo.sh` walks the whole
+      lifecycle against a
+      live `docker compose up` stack - create, poll to terminal, capture, partial
+      refund, and a repeated idempotency key returning the same id. Compose host ports
+      are parameterised (`.env` / `.env.example`) and the mock acquirer moved off the
+      commonly-taken `9090`. Found and fixed during this stage: adding the `benchmark`
+      module to the reactor broke `docker compose --build` - the Dockerfiles copy only
+      `gateway/pom.xml` and `mock-acquirer/pom.xml`, so Maven could not read the third
+      module. Moved `benchmark` behind a Maven profile (`-Pbenchmark`, which CI
+      activates) so the product images stay a two-module build.
 
 **Deliberately not in the MVP:** merchant dashboard UI, hosted payment page, demo shop -
 these come after stage 8, once the API is stable, so the frontend is built once instead
