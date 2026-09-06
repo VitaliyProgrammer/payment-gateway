@@ -121,8 +121,11 @@ reconciliation sweeper once it is older than a staleness threshold.
 whole lifecycle (create → authorize → capture → refund) and prints each step:
 
 ```bash
-./run.sh                 # add --monitoring for Prometheus + Grafana; ./run.sh down to stop
+./run.sh
 ```
+
+`./run.sh --monitoring` also starts Prometheus and Grafana; `./run.sh down` stops
+everything.
 
 **Without building** - pull the pre-built images (published to GHCR on every push to
 `main`), ~30 s to ready instead of a Maven build:
@@ -134,7 +137,7 @@ docker compose -f docker-compose.prod.yml up
 **Plain compose:**
 
 ```bash
-docker compose up --build          # + --profile monitoring for the dashboard
+docker compose up --build
 ```
 
 Any of these brings up Postgres, the mock acquirer and the gateway on `localhost:8080`.
