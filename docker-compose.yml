@@ -71,6 +71,10 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_USERS_DEFAULT_THEME: light
+      # Дозволяє серверний рендер дашборду в PNG через сервіс renderer нижче -
+      # ним користується ops/grafana-screenshot.sh.
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
     volumes:
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -78,6 +82,10 @@ services:
       - "${GRAFANA_PORT:-3000}:3000"
     depends_on:
       - prometheus
+
+  renderer:
+    image: grafana/grafana-image-renderer:3.11.5
+    profiles: ["monitoring"]
 
 volumes:
   payflow-postgres-data:

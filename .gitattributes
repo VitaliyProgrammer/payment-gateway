@@ -1,0 +1,18 @@
+# Deterministic line endings regardless of the checkout OS or a developer's
+# core.autocrlf. Without this, Windows checkouts turn mvnw and *.sh into CRLF and
+# they stop working on Linux / inside Docker ("./mvnw: not found").
+* text=auto eol=lf
+
+# Scripts that must stay LF - shells and the Maven wrapper.
+*.sh    text eol=lf
+mvnw    text eol=lf
+
+# Windows-only, keep CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Binaries - never touch.
+*.jar   binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
