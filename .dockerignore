@@ -14,5 +14,4 @@ replay_pid*.log
 .env.local
 
 README.md
-ROADMAP.md
 docker-compose.yml

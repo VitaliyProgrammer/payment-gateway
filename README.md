@@ -63,8 +63,7 @@ vehicle for demonstrating things that are easy to *claim* and hard to *fake*:
 
 ### What the tests prove
 
-Every row is a Testcontainers test against a real Postgres, run in CI. See `ROADMAP.md`
-for the full scenario behind each.
+Every row is a Testcontainers test against a real Postgres, run in CI.
 
 | Concern | Proven by | Stage |
 |---|---|---|
